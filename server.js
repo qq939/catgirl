@@ -11,6 +11,9 @@ require('dotenv').config();
 const express = require('express');
 const multer = require('multer');
 const path = require('path');
+const crypto = require('crypto');
+const http = require('http');
+const https = require('https');
 const { ImageGenerationClient, Config } = require('coze-coding-dev-sdk');
 
 const app = express();
@@ -18,6 +21,9 @@ const PORT = process.env.PORT || 8082;
 
 // Coze API 配置
 const COZE_API_KEY = process.env.COZE_API_KEY || '';
+
+// OBS 上传配置
+const OBS_BASE = 'http://obs.dimond.top';
 
 // 初始化图片生成客户端
 let imageClient = null;
@@ -38,6 +44,56 @@ const upload = multer({
 // 静态文件
 app.use(express.static(path.join(__dirname)));
 app.use(express.json());
+
+// ===== 工具函数：上传文件到 OBS =====
+function uploadToOBS(buffer, filename) {
+  return new Promise((resolve, reject) => {
+    const url = `${OBS_BASE}/${filename}`;
+    const parsedUrl = new URL(url);
+
+    const options = {
+      hostname: parsedUrl.hostname,
+      port: parsedUrl.port || 80,
+      path: parsedUrl.pathname,
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/octet-stream',
+        'Content-Length': buffer.length,
+      },
+    };
+
+    const req = http.request(options, (res) => {
+      let body = '';
+      res.on('data', (chunk) => { body += chunk; });
+      res.on('end', () => {
+        if (res.statusCode >= 200 && res.statusCode < 300) {
+          // OBS 返回上传后的 URL
+          const returnedUrl = body.trim() || url;
+          resolve(returnedUrl);
+        } else {
+          reject(new Error(`OBS 上传失败: HTTP ${res.statusCode} ${body}`));
+        }
+      });
+    });
+
+    req.on('error', (err) => reject(new Error(`OBS 上传网络错误: ${err.message}`)));
+    req.write(buffer);
+    req.end();
+  });
+}
+
+// ===== 工具函数：将 multer 文件上传到 OBS 并返回公开 URL =====
+async function fileToPublicUrl(file, prefix = 'img') {
+  const ext = path.extname(file.originalname) || '.jpg';
+  const hash = crypto.randomBytes(8).toString('hex');
+  const timestamp = Date.now();
+  const filename = `hbs_${prefix}_${timestamp}_${hash}${ext}`;
+
+  console.log(`[OBS] 上传 ${filename} (${(file.size / 1024).toFixed(1)}KB)`);
+  const publicUrl = await uploadToOBS(file.buffer, filename);
+  console.log(`[OBS] 上传成功: ${publicUrl}`);
+  return publicUrl;
+}
 
 // ===== 健康检查 =====
 app.get('/api/health', (req, res) => {
@@ -63,14 +119,15 @@ app.post('/api/generate', upload.single('image'), async (req, res) => {
 
   try {
     const prompt = buildSinglePrompt(direction);
-    // 将图片转为 base64 data URI
-    const imageBase64 = `data:${imageFile.mimetype};base64,${imageFile.buffer.toString('base64')}`;
+
+    // 先上传图片到 OBS 获取公开 URL
+    const imageUrl = await fileToPublicUrl(imageFile, 'single');
 
     console.log(`[生成] direction=${direction}, 图片大小=${(imageFile.size/1024).toFixed(1)}KB`);
 
     const response = await imageClient.generate({
       prompt: prompt,
-      image: imageBase64,
+      image: imageUrl,
       size: '2K',
     });
 
@@ -79,9 +136,9 @@ app.post('/api/generate', upload.single('image'), async (req, res) => {
       throw new Error('图片生成未返回有效结果');
     }
 
-    const imageUrl = helper.imageUrls[0];
-    console.log(`[生成成功] URL: ${imageUrl}`);
-    res.json({ success: true, imageUrl });
+    const resultUrl = helper.imageUrls[0];
+    console.log(`[生成成功] URL: ${resultUrl}`);
+    res.json({ success: true, imageUrl: resultUrl });
 
   } catch (err) {
     console.error('生成失败:', err);
@@ -108,15 +165,16 @@ app.post('/api/generate-dual', upload.fields([
 
   try {
     const prompt = buildDualPrompt(direction);
-    // 双图模式：参考图为目标方向的源图
+
+    // 双图模式：参考图为目标方向的源图，上传到 OBS 获取 URL
     const refFile = direction === 'generate-cat' ? humanFile : catFile;
-    const refBase64 = `data:${refFile.mimetype};base64,${refFile.buffer.toString('base64')}`;
+    const refUrl = await fileToPublicUrl(refFile, 'dual');
 
     console.log(`[双图生成] direction=${direction}`);
 
     const response = await imageClient.generate({
       prompt: prompt,
-      image: refBase64,
+      image: refUrl,
       size: '2K',
     });
 
@@ -125,9 +183,9 @@ app.post('/api/generate-dual', upload.fields([
       throw new Error('图片生成未返回有效结果');
     }
 
-    const imageUrl = helper.imageUrls[0];
-    console.log(`[双图生成成功] URL: ${imageUrl}`);
-    res.json({ success: true, imageUrl, direction });
+    const resultUrl = helper.imageUrls[0];
+    console.log(`[双图生成成功] URL: ${resultUrl}`);
+    res.json({ success: true, imageUrl: resultUrl, direction });
 
   } catch (err) {
     console.error('双图生成失败:', err);
@@ -157,6 +215,7 @@ app.listen(PORT, () => {
   console.log(`\n🐾 人兽替换服务已启动`);
   console.log(`   地址: http://localhost:${PORT}`);
   console.log(`   API Key: ${COZE_API_KEY ? '✅ 已配置' : '❌ 未配置'}`);
+  console.log(`   OBS 中转: ✅ 已启用 (${OBS_BASE})`);
   if (!COZE_API_KEY) {
     console.log(`\n   请配置 COZE_API_KEY：`);
     console.log(`   方法1: 复制 .env.example 为 .env，填入 COZE_API_KEY=xxx`);
