@@ -22,7 +22,7 @@ const PORT = process.env.PORT || 8082;
 
 // Coze API 配置
 const COZE_API_KEY = process.env.COZE_API_KEY;
-const COZE_WORKFLOW_ID = process.env.COZE_WORKFLOW_ID;
+const COZE_WORKFLOW_ID = process.env.COZE_WORKFLOW_ID || '7646775083549687862';
 const COZE_API_BASE = 'https://api.coze.cn';
 
 // OBS 上传配置（备用，用于生成公开 URL）
