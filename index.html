@@ -1,0 +1,521 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>人兽替换</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    background: #0a0a0f;
+    color: #e0e0e0;
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+  body::before {
+    content: '';
+    position: fixed;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background:
+      radial-gradient(ellipse at 20% 50%, rgba(120,60,200,0.08) 0%, transparent 50%),
+      radial-gradient(ellipse at 80% 50%, rgba(200,120,60,0.08) 0%, transparent 50%);
+    z-index: -1;
+  }
+
+  /* ===== Header ===== */
+  .header {
+    text-align: center;
+    padding: 32px 20px 12px;
+  }
+  .header h1 {
+    font-size: 2.4em;
+    font-weight: 800;
+    background: linear-gradient(135deg, #c084fc, #f97316);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+  .header p { margin-top: 8px; color: #888; font-size: 0.95em; }
+
+  /* ===== Tab 切换 ===== */
+  .tab-bar {
+    display: flex;
+    justify-content: center;
+    gap: 4px;
+    margin: 20px auto 24px;
+    max-width: 400px;
+    background: #15151f;
+    border-radius: 12px;
+    padding: 4px;
+  }
+  .tab-btn {
+    flex: 1;
+    padding: 10px 20px;
+    border: none;
+    border-radius: 10px;
+    background: transparent;
+    color: #888;
+    font-size: 0.95em;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.25s;
+  }
+  .tab-btn.active {
+    background: linear-gradient(135deg, #7c3aed44, #ea580c44);
+    color: #fff;
+  }
+  .tab-btn:hover:not(.active) { color: #ccc; }
+
+  .mode-panel { display: none; }
+  .mode-panel.active { display: block; }
+
+  /* ===== 公用面板样式 ===== */
+  .container {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 0 20px;
+    display: flex;
+    gap: 24px;
+    align-items: stretch;
+    min-height: 55vh;
+  }
+  .panel {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+  }
+  .panel-label {
+    font-size: 1.2em;
+    font-weight: 700;
+    margin-bottom: 12px;
+    padding: 5px 20px;
+    border-radius: 18px;
+    letter-spacing: 0.08em;
+  }
+  .panel-cat .panel-label {
+    background: linear-gradient(135deg, #7c3aed33, #a78bfa33);
+    color: #c084fc;
+    border: 1px solid #7c3aed55;
+  }
+  .panel-human .panel-label {
+    background: linear-gradient(135deg, #ea580c33, #f9731633);
+    color: #fb923c;
+    border: 1px solid #ea580c55;
+  }
+  .panel-result .panel-label {
+    background: linear-gradient(135deg, #05966933, #34d39933);
+    color: #4ade80;
+    border: 1px solid #05966955;
+  }
+
+  .drop-zone {
+    width: 100%;
+    flex: 1;
+    min-height: 380px;
+    border: 2px dashed #333;
+    border-radius: 14px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: all 0.3s;
+    position: relative;
+    overflow: hidden;
+    background: #111118;
+  }
+  .drop-zone:hover { border-color: #555; background: #15151f; }
+  .drop-zone.dragover { border-color: #c084fc; background: #1a1528; box-shadow: 0 0 30px rgba(192,132,252,0.15); }
+  .panel-human .drop-zone.dragover { border-color: #fb923c; background: #1a1510; box-shadow: 0 0 30px rgba(251,146,60,0.15); }
+  .drop-zone.has-image { border-style: solid; border-color: #333; }
+  .drop-zone img { max-width: 95%; max-height: 95%; object-fit: contain; border-radius: 8px; }
+
+  .placeholder-content { text-align: center; pointer-events: none; }
+  .placeholder-icon { font-size: 2.6em; margin-bottom: 10px; opacity: 0.4; }
+  .placeholder-text { font-size: 0.95em; color: #666; line-height: 1.6; }
+  .placeholder-text small { display: block; margin-top: 4px; color: #444; font-size: 0.82em; }
+
+  .arrow-container {
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: 6px; min-width: 50px;
+  }
+  .arrow { font-size: 1.8em; color: #555; animation: pulse 2s ease-in-out infinite; }
+  .arrow-label { font-size: 0.72em; color: #555; writing-mode: vertical-rl; letter-spacing: 0.15em; }
+  @keyframes pulse { 0%,100%{opacity:.4;transform:scale(1)} 50%{opacity:.8;transform:scale(1.1)} }
+
+  /* ===== 按钮 ===== */
+  .action-btn {
+    display: none;
+    margin: 20px auto;
+    padding: 12px 44px;
+    font-size: 1.05em;
+    font-weight: 700;
+    border: none;
+    border-radius: 12px;
+    cursor: pointer;
+    background: linear-gradient(135deg, #7c3aed, #ea580c);
+    color: white;
+    transition: all 0.3s;
+    letter-spacing: 0.08em;
+  }
+  .action-btn:hover { transform: translateY(-2px); box-shadow: 0 8px 25px rgba(124,58,237,0.3); }
+  .action-btn:active { transform: translateY(0); }
+  .action-btn.loading { opacity: 0.7; pointer-events: none; }
+  .action-btn.visible { display: block; }
+
+  /* ===== Loading / Badge / Reset ===== */
+  .loading-overlay {
+    position: absolute; top:0;left:0;right:0;bottom:0;
+    background: rgba(10,10,15,0.85);
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    border-radius: 12px; z-index: 10; display: none;
+  }
+  .loading-overlay.active { display: flex; }
+  .spinner { width:44px;height:44px;border:3px solid #333;border-top-color:#c084fc;border-radius:50%;animation:spin .8s linear infinite; }
+  .panel-human .spinner { border-top-color:#fb923c; }
+  .panel-result .spinner { border-top-color:#4ade80; }
+  @keyframes spin { to{transform:rotate(360deg)} }
+  .loading-text { margin-top:14px; font-size:0.85em; color:#888; }
+
+  .result-badge {
+    position:absolute;top:10px;right:10px;padding:3px 10px;border-radius:6px;
+    font-size:0.72em;font-weight:600;background:rgba(0,0,0,0.6);color:#4ade80;display:none;z-index:5;
+  }
+  .result-badge.visible { display: block; }
+
+  .reset-btn {
+    position:absolute;top:10px;left:10px;width:28px;height:28px;border-radius:50%;border:none;
+    background:rgba(255,255,255,0.1);color:#aaa;font-size:0.9em;cursor:pointer;display:none;z-index:5;
+    transition:all .2s; align-items:center;justify-content:center;
+  }
+  .reset-btn:hover { background:rgba(255,255,255,0.2);color:#fff; }
+  .reset-btn.visible { display:flex; }
+
+  /* ===== 双图模式：方向选择 ===== */
+  .direction-selector {
+    display: flex;
+    justify-content: center;
+    gap: 16px;
+    margin: 16px auto;
+  }
+  .direction-btn {
+    padding: 10px 28px;
+    border: 2px solid #333;
+    border-radius: 12px;
+    background: #15151f;
+    color: #aaa;
+    font-size: 0.95em;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.25s;
+  }
+  .direction-btn.active {
+    border-color: #c084fc;
+    color: #fff;
+    background: linear-gradient(135deg, #7c3aed22, #ea580c22);
+  }
+  .direction-btn:hover:not(.active) { border-color: #555; color: #ddd; }
+
+  /* ===== Footer ===== */
+  .footer { text-align:center; padding:24px 20px; color:#444; font-size:0.82em; }
+
+  /* ===== 响应式 ===== */
+  @media (max-width:768px) {
+    .container { flex-direction:column; gap:16px; }
+    .arrow-container { flex-direction:row; min-width:auto; }
+    .arrow-label { writing-mode:horizontal-tb; }
+    .header h1 { font-size:1.8em; }
+    .drop-zone { min-height:250px; }
+  }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>🐾 人兽替换 🧑</h1>
+  <p>上传猫咪或人物照片，AI 自动生成对应的替换形象</p>
+</div>
+
+<!-- Tab 切换 -->
+<div class="tab-bar">
+  <button class="tab-btn active" data-mode="single">🖼️ 单图模式</button>
+  <button class="tab-btn" data-mode="dual">🎯 双图模式</button>
+</div>
+
+<!-- ==================== 单图模式 ==================== -->
+<div class="mode-panel active" id="singleMode">
+  <div class="container">
+    <div class="panel panel-cat">
+      <div class="panel-label">🐱 猫咪</div>
+      <div class="drop-zone" id="sCatZone">
+        <img id="sCatImage" src="" alt="" style="display:none;">
+        <div class="placeholder-content" id="sCatPlaceholder">
+          <div class="placeholder-icon">🐾</div>
+          <div class="placeholder-text">拖拽猫咪图片到此处<br>或点击上传<small>支持 JPG / PNG / WebP</small></div>
+        </div>
+        <div class="loading-overlay" id="sCatLoading"><div class="spinner"></div><div class="loading-text">AI 生成猫咪中...</div></div>
+        <span class="result-badge" id="sCatBadge">AI 生成</span>
+        <button class="reset-btn" id="sCatReset" title="重置">✕</button>
+      </div>
+    </div>
+    <div class="arrow-container"><span class="arrow">⟷</span><span class="arrow-label">AI 替换</span></div>
+    <div class="panel panel-human">
+      <div class="panel-label">🧑 人物</div>
+      <div class="drop-zone" id="sHumanZone">
+        <img id="sHumanImage" src="" alt="" style="display:none;">
+        <div class="placeholder-content" id="sHumanPlaceholder">
+          <div class="placeholder-icon">🧑</div>
+          <div class="placeholder-text">拖拽人物图片到此处<br>或点击上传<small>支持 JPG / PNG / WebP</small></div>
+        </div>
+        <div class="loading-overlay" id="sHumanLoading"><div class="spinner"></div><div class="loading-text">AI 生成人物中...</div></div>
+        <span class="result-badge" id="sHumanBadge">AI 生成</span>
+        <button class="reset-btn" id="sHumanReset" title="重置">✕</button>
+      </div>
+    </div>
+  </div>
+  <button class="action-btn" id="sGenerateBtn">✨ 开始替换生成</button>
+</div>
+
+<!-- ==================== 双图模式 ==================== -->
+<div class="mode-panel" id="dualMode">
+  <div class="container">
+    <div class="panel panel-cat">
+      <div class="panel-label">🐱 猫咪参考</div>
+      <div class="drop-zone" id="dCatZone">
+        <img id="dCatImage" src="" alt="" style="display:none;">
+        <div class="placeholder-content" id="dCatPlaceholder">
+          <div class="placeholder-icon">🐾</div>
+          <div class="placeholder-text">上传猫咪参考图<br>或点击上传<small>作为猫咪外貌参考</small></div>
+        </div>
+        <button class="reset-btn" id="dCatReset" title="重置">✕</button>
+      </div>
+    </div>
+    <div class="arrow-container"><span class="arrow">⟷</span><span class="arrow-label">参考生图</span></div>
+    <div class="panel panel-human">
+      <div class="panel-label">🧑 人物参考</div>
+      <div class="drop-zone" id="dHumanZone">
+        <img id="dHumanImage" src="" alt="" style="display:none;">
+        <div class="placeholder-content" id="dHumanPlaceholder">
+          <div class="placeholder-icon">🧑</div>
+          <div class="placeholder-text">上传人物参考图<br>或点击上传<small>作为人物外貌参考</small></div>
+        </div>
+        <button class="reset-btn" id="dHumanReset" title="重置">✕</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 方向选择 -->
+  <div class="direction-selector">
+    <button class="direction-btn active" data-dir="generate-human">🐱→🧑 生成人物</button>
+    <button class="direction-btn" data-dir="generate-cat">🧑→🐱 生成猫咪</button>
+  </div>
+
+  <!-- 结果展示 -->
+  <div class="container" style="min-height:auto;margin-top:10px;">
+    <div class="panel panel-result" style="max-width:500px;margin:0 auto;width:100%;">
+      <div class="panel-label">✨ 生成结果</div>
+      <div class="drop-zone" id="dResultZone" style="min-height:350px;cursor:default;">
+        <img id="dResultImage" src="" alt="" style="display:none;">
+        <div class="placeholder-content" id="dResultPlaceholder">
+          <div class="placeholder-icon" style="opacity:0.25;">🎨</div>
+          <div class="placeholder-text" style="color:#444;">上传参考图后点击生成</div>
+        </div>
+        <div class="loading-overlay" id="dResultLoading"><div class="spinner"></div><div class="loading-text">AI 生成中...</div></div>
+        <span class="result-badge" id="dResultBadge">AI 生成</span>
+      </div>
+    </div>
+  </div>
+  <button class="action-btn" id="dGenerateBtn">✨ 开始生成</button>
+</div>
+
+<div class="footer">人兽替换 — 左猫右人，AI 自动识别并生成对应形象</div>
+
+<!-- 隐藏 input -->
+<input type="file" id="sCatInput" accept="image/*" style="display:none;">
+<input type="file" id="sHumanInput" accept="image/*" style="display:none;">
+<input type="file" id="dCatInput" accept="image/*" style="display:none;">
+<input type="file" id="dHumanInput" accept="image/*" style="display:none;">
+
+<script>
+// ===== Tab 切换 =====
+document.querySelectorAll('.tab-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+    document.querySelectorAll('.mode-panel').forEach(p => p.classList.remove('active'));
+    btn.classList.add('active');
+    document.getElementById(btn.dataset.mode === 'single' ? 'singleMode' : 'dualMode').classList.add('active');
+  });
+});
+
+// ===== 通用工具函数 =====
+function setupDropZone(zone, input, type, onFile) {
+  zone.addEventListener('click', e => { if (!e.target.closest('.reset-btn')) input.click(); });
+  input.addEventListener('change', e => { if (e.target.files[0]) onFile(e.target.files[0]); });
+  zone.addEventListener('dragover', e => { e.preventDefault(); zone.classList.add('dragover'); });
+  zone.addEventListener('dragleave', () => zone.classList.remove('dragover'));
+  zone.addEventListener('drop', e => {
+    e.preventDefault(); zone.classList.remove('dragover');
+    const f = e.dataTransfer.files[0];
+    if (f && f.type.startsWith('image/')) onFile(f);
+  });
+}
+
+function showImg(imgEl, phEl, src, resetBtn, badge, isGen) {
+  imgEl.src = src; imgEl.style.display = 'block'; phEl.style.display = 'none';
+  imgEl.parentElement.classList.add('has-image');
+  resetBtn.classList.add('visible');
+  if (isGen) badge?.classList.add('visible'); else badge?.classList.remove('visible');
+}
+function hideImg(imgEl, phEl, resetBtn, badge) {
+  imgEl.src = ''; imgEl.style.display = 'none'; phEl.style.display = 'block';
+  imgEl.parentElement.classList.remove('has-image');
+  resetBtn.classList.remove('visible'); badge?.classList.remove('visible');
+}
+
+function fileToDataUrl(file) {
+  return new Promise(r => { const fr = new FileReader(); fr.onload = e => r(e.target.result); fr.readAsDataURL(file); });
+}
+
+// ===== 单图模式 =====
+const sState = { catFile: null, catUrl: null, humanFile: null, humanUrl: null, catGen: false, humanGen: false };
+const sEls = {
+  catImg: document.getElementById('sCatImage'), catPh: document.getElementById('sCatPlaceholder'),
+  catReset: document.getElementById('sCatReset'), catBadge: document.getElementById('sCatBadge'),
+  catLoading: document.getElementById('sCatLoading'), catZone: document.getElementById('sCatZone'),
+  humanImg: document.getElementById('sHumanImage'), humanPh: document.getElementById('sHumanPlaceholder'),
+  humanReset: document.getElementById('sHumanReset'), humanBadge: document.getElementById('sHumanBadge'),
+  humanLoading: document.getElementById('sHumanLoading'), humanZone: document.getElementById('sHumanZone'),
+  btn: document.getElementById('sGenerateBtn')
+};
+
+setupDropZone(sEls.catZone, document.getElementById('sCatInput'), 'cat', async f => {
+  sState.catFile = f; sState.catUrl = await fileToDataUrl(f); sState.catGen = false;
+  showImg(sEls.catImg, sEls.catPh, sState.catUrl, sEls.catReset, sEls.catBadge, false);
+  updateSBtn();
+});
+setupDropZone(sEls.humanZone, document.getElementById('sHumanInput'), 'human', async f => {
+  sState.humanFile = f; sState.humanUrl = await fileToDataUrl(f); sState.humanGen = false;
+  showImg(sEls.humanImg, sEls.humanPh, sState.humanUrl, sEls.humanReset, sEls.humanBadge, false);
+  updateSBtn();
+});
+
+sEls.catReset.addEventListener('click', e => {
+  e.stopPropagation(); sState.catFile = null; sState.catUrl = null; sState.catGen = false;
+  hideImg(sEls.catImg, sEls.catPh, sEls.catReset, sEls.catBadge); updateSBtn();
+});
+sEls.humanReset.addEventListener('click', e => {
+  e.stopPropagation(); sState.humanFile = null; sState.humanUrl = null; sState.humanGen = false;
+  hideImg(sEls.humanImg, sEls.humanPh, sEls.humanReset, sEls.humanBadge); updateSBtn();
+});
+
+function updateSBtn() {
+  sEls.btn.classList.toggle('visible', !!(sState.catUrl || sState.humanUrl));
+}
+
+sEls.btn.addEventListener('click', async () => {
+  sEls.btn.classList.add('loading'); sEls.btn.textContent = '⏳ 生成中...';
+  try {
+    if (sState.catFile && !sState.catGen) await sGenerateHuman();
+    if (sState.humanFile && !sState.humanGen) await sGenerateCat();
+  } catch (err) { alert('生成失败: ' + err.message); }
+  finally { sEls.btn.classList.remove('loading'); sEls.btn.textContent = '✨ 开始替换生成'; }
+});
+
+async function sGenerateHuman() {
+  sEls.humanLoading.classList.add('active');
+  try {
+    const fd = new FormData(); fd.append('image', sState.catFile); fd.append('direction', 'cat-to-human');
+    const r = await fetch('/api/generate', { method: 'POST', body: fd }); const d = await r.json();
+    if (!d.success) throw new Error(d.error); sState.humanGen = true;
+    showImg(sEls.humanImg, sEls.humanPh, d.imageUrl, sEls.humanReset, sEls.humanBadge, true);
+  } catch (e) { alert('生成人物失败: ' + e.message); }
+  finally { sEls.humanLoading.classList.remove('active'); }
+}
+async function sGenerateCat() {
+  sEls.catLoading.classList.add('active');
+  try {
+    const fd = new FormData(); fd.append('image', sState.humanFile); fd.append('direction', 'human-to-cat');
+    const r = await fetch('/api/generate', { method: 'POST', body: fd }); const d = await r.json();
+    if (!d.success) throw new Error(d.error); sState.catGen = true;
+    showImg(sEls.catImg, sEls.catPh, d.imageUrl, sEls.catReset, sEls.catBadge, true);
+  } catch (e) { alert('生成猫咪失败: ' + e.message); }
+  finally { sEls.catLoading.classList.remove('active'); }
+}
+
+// 单图模式：加载本地示例图
+(function loadSDemo() {
+  const cUrl = '/images/demo-cat.jpg';
+  const hUrl = '/images/demo-human.jpg';
+  sState.catUrl = cUrl; sState.humanUrl = hUrl;
+  showImg(sEls.catImg, sEls.catPh, cUrl, sEls.catReset, sEls.catBadge, false);
+  showImg(sEls.humanImg, sEls.humanPh, hUrl, sEls.humanReset, sEls.humanBadge, false);
+  updateSBtn();
+})();
+
+// ===== 双图模式 =====
+const dState = { catFile: null, catUrl: null, humanFile: null, humanUrl: null, direction: 'generate-human' };
+const dEls = {
+  catImg: document.getElementById('dCatImage'), catPh: document.getElementById('dCatPlaceholder'),
+  catReset: document.getElementById('dCatReset'), catZone: document.getElementById('dCatZone'),
+  humanImg: document.getElementById('dHumanImage'), humanPh: document.getElementById('dHumanPlaceholder'),
+  humanReset: document.getElementById('dHumanReset'), humanZone: document.getElementById('dHumanZone'),
+  resultImg: document.getElementById('dResultImage'), resultPh: document.getElementById('dResultPlaceholder'),
+  resultBadge: document.getElementById('dResultBadge'), resultLoading: document.getElementById('dResultLoading'),
+  btn: document.getElementById('dGenerateBtn')
+};
+
+setupDropZone(dEls.catZone, document.getElementById('dCatInput'), 'cat', async f => {
+  dState.catFile = f; dState.catUrl = await fileToDataUrl(f);
+  showImg(dEls.catImg, dEls.catPh, dState.catUrl, dEls.catReset, null, false); updateDBtn();
+});
+setupDropZone(dEls.humanZone, document.getElementById('dHumanInput'), 'human', async f => {
+  dState.humanFile = f; dState.humanUrl = await fileToDataUrl(f);
+  showImg(dEls.humanImg, dEls.humanPh, dState.humanUrl, dEls.humanReset, null, false); updateDBtn();
+});
+
+dEls.catReset.addEventListener('click', e => {
+  e.stopPropagation(); dState.catFile = null; dState.catUrl = null;
+  hideImg(dEls.catImg, dEls.catPh, dEls.catReset, null); updateDBtn();
+});
+dEls.humanReset.addEventListener('click', e => {
+  e.stopPropagation(); dState.humanFile = null; dState.humanUrl = null;
+  hideImg(dEls.humanImg, dEls.humanPh, dEls.humanReset, null); updateDBtn();
+});
+
+// 方向选择
+document.querySelectorAll('.direction-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.direction-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    dState.direction = btn.dataset.dir;
+  });
+});
+
+function updateDBtn() {
+  dEls.btn.classList.toggle('visible', !!(dState.catFile && dState.humanFile));
+}
+
+dEls.btn.addEventListener('click', async () => {
+  if (!dState.catFile || !dState.humanFile) { alert('请先上传两张参考图'); return; }
+  dEls.btn.classList.add('loading'); dEls.btn.textContent = '⏳ 生成中...';
+  dEls.resultLoading.classList.add('active');
+  try {
+    const fd = new FormData();
+    fd.append('catImage', dState.catFile);
+    fd.append('humanImage', dState.humanFile);
+    fd.append('direction', dState.direction);
+    const r = await fetch('/api/generate-dual', { method: 'POST', body: fd });
+    const d = await r.json();
+    if (!d.success) throw new Error(d.error);
+    showImg(dEls.resultImg, dEls.resultPh, d.imageUrl, { classList: { add(){}, remove(){} } }, dEls.resultBadge, true);
+  } catch (e) { alert('生成失败: ' + e.message); }
+  finally {
+    dEls.resultLoading.classList.remove('active');
+    dEls.btn.classList.remove('loading'); dEls.btn.textContent = '✨ 开始生成';
+  }
+});
+</script>
+</body>
+</html>

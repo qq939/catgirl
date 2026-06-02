@@ -1,0 +1,15 @@
+{
+  "name": "human-beast-swap",
+  "version": "1.0.0",
+  "description": "人兽替换 - AI 图片生成网站",
+  "scripts": {
+    "start": "PORT=8082 node server.js"
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "multer": "^1.4.5-lts.1",
+    "node-fetch": "^2.7.0",
+    "dotenv": "^16.4.5",
+    "coze-coding-dev-sdk": "^0.7.23"
+  }
+}
