@@ -1,8 +1,8 @@
 // ============================================
-// 人兽替换 - 后端服务
+// 人兽替换 - 后端服务（CLI 模式）
 // ============================================
+// 通过 coze CLI 调用图片生成 API，自动处理认证
 // 环境变量（.env 文件自动加载，系统环境变量优先级更高）：
-//   COZE_API_KEY=你的Coze个人访问令牌（必填）
 //   PORT=8082（可选，默认8082）
 // ============================================
 
@@ -13,27 +13,13 @@ const multer = require('multer');
 const path = require('path');
 const crypto = require('crypto');
 const http = require('http');
-const https = require('https');
-const { ImageGenerationClient, Config } = require('coze-coding-dev-sdk');
+const { execFile } = require('child_process');
 
 const app = express();
 const PORT = process.env.PORT || 8082;
 
-// Coze API 配置
-const COZE_API_KEY = process.env.COZE_API_KEY || '';
-
 // OBS 上传配置
 const OBS_BASE = 'http://obs.dimond.top';
-
-// 初始化图片生成客户端
-let imageClient = null;
-if (COZE_API_KEY) {
-  const config = new Config({
-    apiKey: COZE_API_KEY,
-    baseUrl: 'https://api.coze.cn',
-  });
-  imageClient = new ImageGenerationClient(config);
-}
 
 // 文件上传配置
 const upload = multer({
@@ -67,7 +53,6 @@ function uploadToOBS(buffer, filename) {
       res.on('data', (chunk) => { body += chunk; });
       res.on('end', () => {
         if (res.statusCode >= 200 && res.statusCode < 300) {
-          // OBS 返回上传后的 URL
           const returnedUrl = body.trim() || url;
           resolve(returnedUrl);
         } else {
@@ -95,21 +80,49 @@ async function fileToPublicUrl(file, prefix = 'img') {
   return publicUrl;
 }
 
+// ===== 工具函数：调用 coze CLI 生成图片 =====
+function cozeGenerateImage(prompt, imageUrl) {
+  return new Promise((resolve, reject) => {
+    const args = ['generate', 'image', prompt, '--size', '2K', '--format', 'json'];
+    if (imageUrl) {
+      args.push('--image', imageUrl);
+    }
+
+    console.log(`[CLI] coze ${args.join(' ')}`);
+
+    execFile('coze', args, { timeout: 120000 }, (error, stdout, stderr) => {
+      if (error) {
+        console.error(`[CLI] 错误: ${error.message}`);
+        reject(new Error(`coze CLI 失败: ${error.message}`));
+        return;
+      }
+
+      try {
+        const result = JSON.parse(stdout.trim());
+        if (Array.isArray(result) && result.length > 0 && result[0].url) {
+          resolve(result[0].url);
+        } else {
+          reject(new Error('CLI 未返回有效图片 URL'));
+        }
+      } catch (parseErr) {
+        console.error(`[CLI] 输出解析失败: ${stdout.substring(0, 200)}`);
+        reject(new Error(`CLI 输出解析失败: ${parseErr.message}`));
+      }
+    });
+  });
+}
+
 // ===== 健康检查 =====
 app.get('/api/health', (req, res) => {
   res.json({
     status: 'ok',
-    configured: !!COZE_API_KEY,
-    message: COZE_API_KEY ? '服务已就绪' : '请配置 COZE_API_KEY'
+    mode: 'cli',
+    message: '服务已就绪（coze CLI 模式）'
   });
 });
 
 // ===== 核心：单图生成 API =====
 app.post('/api/generate', upload.single('image'), async (req, res) => {
-  if (!imageClient) {
-    return res.status(500).json({ error: '未配置 COZE_API_KEY，请在 .env 文件或环境变量中设置' });
-  }
-
   const direction = req.body.direction;
   const imageFile = req.file;
 
@@ -120,23 +133,14 @@ app.post('/api/generate', upload.single('image'), async (req, res) => {
   try {
     const prompt = buildSinglePrompt(direction);
 
-    // 先上传图片到 OBS 获取公开 URL
+    // 上传图片到 OBS 获取公开 URL
     const imageUrl = await fileToPublicUrl(imageFile, 'single');
 
     console.log(`[生成] direction=${direction}, 图片大小=${(imageFile.size/1024).toFixed(1)}KB`);
 
-    const response = await imageClient.generate({
-      prompt: prompt,
-      image: imageUrl,
-      size: '2K',
-    });
+    // 调用 coze CLI 生成图片
+    const resultUrl = await cozeGenerateImage(prompt, imageUrl);
 
-    const helper = imageClient.getResponseHelper(response);
-    if (!helper.success || !helper.imageUrls || helper.imageUrls.length === 0) {
-      throw new Error('图片生成未返回有效结果');
-    }
-
-    const resultUrl = helper.imageUrls[0];
     console.log(`[生成成功] URL: ${resultUrl}`);
     res.json({ success: true, imageUrl: resultUrl });
 
@@ -151,10 +155,6 @@ app.post('/api/generate-dual', upload.fields([
   { name: 'catImage', maxCount: 1 },
   { name: 'humanImage', maxCount: 1 }
 ]), async (req, res) => {
-  if (!imageClient) {
-    return res.status(500).json({ error: '未配置 COZE_API_KEY' });
-  }
-
   const direction = req.body.direction;
   const catFile = req.files?.catImage?.[0];
   const humanFile = req.files?.humanImage?.[0];
@@ -166,24 +166,15 @@ app.post('/api/generate-dual', upload.fields([
   try {
     const prompt = buildDualPrompt(direction);
 
-    // 双图模式：参考图为目标方向的源图，上传到 OBS 获取 URL
+    // 双图模式：参考图为目标方向的源图
     const refFile = direction === 'generate-cat' ? humanFile : catFile;
     const refUrl = await fileToPublicUrl(refFile, 'dual');
 
     console.log(`[双图生成] direction=${direction}`);
 
-    const response = await imageClient.generate({
-      prompt: prompt,
-      image: refUrl,
-      size: '2K',
-    });
+    // 调用 coze CLI 生成图片
+    const resultUrl = await cozeGenerateImage(prompt, refUrl);
 
-    const helper = imageClient.getResponseHelper(response);
-    if (!helper.success || !helper.imageUrls || helper.imageUrls.length === 0) {
-      throw new Error('图片生成未返回有效结果');
-    }
-
-    const resultUrl = helper.imageUrls[0];
     console.log(`[双图生成成功] URL: ${resultUrl}`);
     res.json({ success: true, imageUrl: resultUrl, direction });
 
@@ -212,14 +203,9 @@ function buildDualPrompt(direction) {
 
 // ===== 启动 =====
 app.listen(PORT, () => {
-  console.log(`\n🐾 人兽替换服务已启动`);
+  console.log(`\n🐾 人兽替换服务已启动（CLI 模式）`);
   console.log(`   地址: http://localhost:${PORT}`);
-  console.log(`   API Key: ${COZE_API_KEY ? '✅ 已配置' : '❌ 未配置'}`);
+  console.log(`   模式: coze CLI 子进程调用`);
   console.log(`   OBS 中转: ✅ 已启用 (${OBS_BASE})`);
-  if (!COZE_API_KEY) {
-    console.log(`\n   请配置 COZE_API_KEY：`);
-    console.log(`   方法1: 复制 .env.example 为 .env，填入 COZE_API_KEY=xxx`);
-    console.log(`   方法2: export COZE_API_KEY="你的API Key"`);
-  }
   console.log();
 });
