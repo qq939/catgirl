@@ -15,27 +15,32 @@ AI 驱动的猫咪↔人物图片替换网站。上传猫咪或人物照片，AI
 npm install
 ```
 
-### 2. 配置 API Key
+### 2. 配置环境变量
 
-复制 `.env.example` 为 `.env`，填入你的 Coze API Key：
+复制 `.env.example` 为 `.env`，填入配置：
 
 ```bash
 cp .env.example .env
-# 编辑 .env，设置 COZE_API_KEY
 ```
 
-或通过系统环境变量设置（优先级更高）：
+必填项：
+- `COZE_API_KEY`：Coze 个人访问令牌（[获取地址](https://www.coze.cn/open/oauth/pats)）
+- `COZE_WORKFLOW_ID`：Coze 工作流 ID（详见下方配置指南）
 
-```bash
-export COZE_API_KEY="你的API Key"
-```
+### 3. 创建 Coze 工作流
 
-### 3. 启动服务
+这是最关键的一步！详见 [SETUP_GUIDE.md](./SETUP_GUIDE.md)
+
+简要步骤：
+1. 在 [coze.cn](https://www.coze.cn) 创建工作流
+2. 添加"图像生成"节点，提示词设为 `{{prompt}}`，参考图设为 `{{image_url}}`
+3. 试运行成功后发布
+4. 从浏览器地址栏获取 workflow_id
+
+### 4. 启动服务
 
 ```bash
 npm start
-# 或指定端口
-PORT=8082 node server.js
 ```
 
 访问 http://localhost:8082
@@ -44,7 +49,8 @@ PORT=8082 node server.js
 
 | 变量 | 必填 | 默认值 | 说明 |
 |------|------|--------|------|
-| COZE_API_KEY | 是 | - | Coze 个人访问令牌 |
+| COZE_API_KEY | 是 | - | Coze 个人访问令牌（PAT） |
+| COZE_WORKFLOW_ID | 是 | - | Coze 工作流 ID |
 | PORT | 否 | 8082 | 服务端口 |
 
 系统环境变量优先级高于 `.env` 文件。
@@ -53,7 +59,7 @@ PORT=8082 node server.js
 
 ```
 human-beast-swap/
-├── server.js           # 后端服务（Express + Coze SDK）
+├── server.js           # 后端服务（Express + Coze Workflow API）
 ├── index.html          # 前端页面
 ├── images/             # 本地示例图
 │   ├── demo-cat.jpg    # 猫咪示例
@@ -61,6 +67,7 @@ human-beast-swap/
 ├── package.json        # 依赖配置
 ├── .env.example        # 环境变量模板
 ├── .env                # 环境变量（不纳入版本控制）
+├── SETUP_GUIDE.md      # 详细配置指南
 ├── WORKFLOW_DESIGN.md  # Coze 工作流设计文档
 └── README.md           # 本文件
 ```
@@ -96,13 +103,19 @@ Content-Type: multipart/form-data
 GET /api/health
 ```
 
-## Coze 工作流
+## 图片生成流程
 
-详见 [WORKFLOW_DESIGN.md](./WORKFLOW_DESIGN.md)，包含单图模式和双图模式的完整工作流设计。
-可在 Coze 平台可视化搭建，也可继续使用当前 SDK 模式。
+```
+用户上传图片 → OBS中转获取公开URL → 调用Coze Workflow API → 返回生成图片URL
+```
+
+1. 用户上传的图片先传到 OBS 中转服务，获取公开可访问的 URL
+2. 将 prompt + image_url 传给 Coze 工作流
+3. 工作流中的图像生成节点基于 prompt 和参考图生成新图
+4. 返回生成图片的 URL
 
 ## 技术栈
 
-- 后端：Express + multer + dotenv + coze-coding-dev-sdk
+- 后端：Express + multer + dotenv
 - 前端：原生 HTML/CSS/JS
-- AI：Coze 图片生成 API（支持参考图生成）
+- AI：Coze Workflow API + Seedream 图像生成模型
