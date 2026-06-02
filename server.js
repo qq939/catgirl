@@ -360,20 +360,60 @@ app.post('/api/generate-dual', upload.fields([
   }
 });
 
+// ===== 自定义提示词（持久化到 prompts.json） =====
+const fs = require('fs');
+const PROMPTS_FILE = path.join(__dirname, 'prompts.json');
+
+const DEFAULT_PROMPTS = {
+  'cat-to-human': `将参考图中的动物1:1替换为病娇萝莉少女，严格还原动物的神态、动作、构图、场景及所有细节，每一个姿态和表情都对应映射到人物身上。16岁病娇萝莉，苍白皮肤，黑色长直发齐刘海，眼神慵懒空洞又带一丝满足，身穿白色水手服上衣搭配深蓝百褶短裙，领口系红色蝴蝶结，过膝白色长袜，脚踩黑色玛丽珍鞋，颈戴蕾丝choker，身边散落洛丽塔发饰和丝带。写实摄影电影画质伦勃朗光。`,
+  'human-to-cat': `将参考图中的人物1:1替换为一只猫，严格还原人物的神态、动作、构图、场景及所有细节，每一个姿态和表情都对应映射到猫咪身上。胖橘白相间猫咪，圆脸大眼，粉鼻头，白色胡须，毛色橘白交替，慵懒满足的神态，粉嫩肉垫。写实摄影电影画质。`
+};
+
+function loadPrompts() {
+  try {
+    if (fs.existsSync(PROMPTS_FILE)) {
+      const saved = JSON.parse(fs.readFileSync(PROMPTS_FILE, 'utf8'));
+      return { ...DEFAULT_PROMPTS, ...saved };
+    }
+  } catch (e) {
+    console.error('[Prompts] 读取失败，使用默认值:', e.message);
+  }
+  return { ...DEFAULT_PROMPTS };
+}
+
+function savePrompts(prompts) {
+  fs.writeFileSync(PROMPTS_FILE, JSON.stringify(prompts, null, 2), 'utf8');
+}
+
+let customPrompts = loadPrompts();
+
+// ===== 提示词 API =====
+app.get('/api/prompts', (req, res) => {
+  res.json(customPrompts);
+});
+
+app.post('/api/prompts', express.json(), (req, res) => {
+  const { 'cat-to-human': c2h, 'human-to-cat': h2c } = req.body;
+  if (c2h !== undefined) customPrompts['cat-to-human'] = c2h;
+  if (h2c !== undefined) customPrompts['human-to-cat'] = h2c;
+  savePrompts(customPrompts);
+  res.json({ success: true, prompts: customPrompts });
+});
+
 // ===== Prompt 构建 =====
 function buildSinglePrompt(direction) {
   if (direction === 'cat-to-human') {
-    return `将参考图中的猫咪1:1替换为病娇小少妇，严格还原猫咪的神态、动作、构图、场景及所有细节，每一个姿态和表情都对应映射到人物身上。25岁少妇，苍白皮肤，黑微卷长发，病娇气质，眼神慵懒空洞又带一丝满足，白衬衫微敞领口，黑包臀裙，领口别萝莉胸针，脖子挂工牌绳（工牌证件照是穿正装的二次元萝莉动漫角色大头照，蓝底标准证件照排版），身边常见萝莉手办。写实摄影电影画质伦勃朗光。`;
+    return customPrompts['cat-to-human'];
   } else {
-    return `将参考图中的人物1:1替换为一只猫，严格还原人物的神态、动作、构图、场景及所有细节，每一个姿态和表情都对应映射到猫咪身上。胖橘白相间猫咪，圆脸大眼，粉鼻头，白色胡须，毛色橘白交替，慵懒满足的神态，粉嫩肉垫。写实摄影电影画质。`;
+    return customPrompts['human-to-cat'];
   }
 }
 
 function buildDualPrompt(direction) {
   if (direction === 'generate-human') {
-    return `参考图为一只猫咪，请将猫咪1:1替换为病娇小少妇，严格还原猫咪的神态、动作、构图、场景及所有细节，每一个姿态和表情都对应映射到人物身上。25岁少妇，苍白皮肤，黑微卷长发，病娇气质，眼神慵懒空洞又带一丝满足，白衬衫微敞领口，黑包臀裙，领口别萝莉胸针，脖子挂工牌绳（工牌证件照是穿正装的二次元萝莉动漫角色大头照，蓝底标准证件照排版），身边常见萝莉手办。写实摄影电影画质伦勃朗光。`;
+    return customPrompts['cat-to-human'];
   } else {
-    return `参考图为一个人物，请将人物1:1替换为一只猫，严格还原人物的神态、动作、构图、场景及所有细节，每一个姿态和表情都对应映射到猫咪身上。胖橘白相间猫咪，圆脸大眼，粉鼻头，白色胡须，毛色橘白交替，慵懒满足的神态，粉嫩肉垫。写实摄影电影画质。`;
+    return customPrompts['human-to-cat'];
   }
 }
 

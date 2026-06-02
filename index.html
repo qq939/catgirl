@@ -218,6 +218,38 @@
   }
   .direction-btn:hover:not(.active) { border-color: #555; color: #ddd; }
 
+  /* ===== 提示词设置 ===== */
+  .settings-toggle {
+    position: fixed; bottom: 16px; right: 16px; width: 36px; height: 36px;
+    border-radius: 50%; border: 1px solid #333; background: #15151f;
+    color: #555; font-size: 1em; cursor: pointer; z-index: 100;
+    display: flex; align-items: center; justify-content: center; transition: all .2s;
+  }
+  .settings-toggle:hover { border-color: #666; color: #aaa; }
+
+  .settings-panel {
+    position: fixed; bottom: 60px; right: 16px; width: 420px; max-height: 80vh;
+    background: #111118; border: 1px solid #333; border-radius: 14px;
+    padding: 20px; z-index: 100; display: none; overflow-y: auto;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.6);
+  }
+  .settings-panel.active { display: block; }
+  .settings-panel h3 { font-size: 1em; color: #aaa; margin-bottom: 14px; font-weight: 600; }
+  .settings-panel label { display: block; font-size: 0.85em; color: #888; margin-bottom: 6px; margin-top: 12px; }
+  .settings-panel textarea {
+    width: 100%; height: 90px; background: #0a0a0f; border: 1px solid #333; border-radius: 8px;
+    color: #ddd; padding: 10px; font-size: 0.85em; resize: vertical; line-height: 1.5;
+  }
+  .settings-panel textarea:focus { outline: none; border-color: #7c3aed55; }
+  .settings-save {
+    margin-top: 14px; padding: 8px 24px; border: none; border-radius: 8px;
+    background: linear-gradient(135deg, #7c3aed, #ea580c); color: #fff;
+    font-size: 0.9em; font-weight: 600; cursor: pointer; transition: all .2s;
+  }
+  .settings-save:hover { opacity: 0.85; }
+  .settings-saved { display: inline-block; margin-left: 10px; color: #4ade80; font-size: 0.82em; opacity: 0; transition: opacity .3s; }
+  .settings-saved.show { opacity: 1; }
+
   /* ===== Footer ===== */
   .footer { text-align:center; padding:24px 20px; color:#444; font-size:0.82em; }
 
@@ -332,6 +364,18 @@
 
 <div class="footer">人兽替换 — 左猫右人，AI 自动识别并生成对应形象</div>
 
+<!-- 提示词设置 -->
+<button class="settings-toggle" id="settingsToggle" title="提示词设置">⚙</button>
+<div class="settings-panel" id="settingsPanel">
+  <h3>提示词设置</h3>
+  <label for="promptC2H">🐾 动物 → 🧑 人物 提示词</label>
+  <textarea id="promptC2H" placeholder="动物变人的提示词..."></textarea>
+  <label for="promptH2C">🧑 人物 → 🐾 动物 提示词</label>
+  <textarea id="promptH2C" placeholder="人变动物的提示词..."></textarea>
+  <button class="settings-save" id="settingsSave">保存</button>
+  <span class="settings-saved" id="settingsSaved">✓ 已保存</span>
+</div>
+
 <!-- 隐藏 input -->
 <input type="file" id="sCatInput" accept="image/*" style="display:none;">
 <input type="file" id="sHumanInput" accept="image/*" style="display:none;">
@@ -339,6 +383,47 @@
 <input type="file" id="dHumanInput" accept="image/*" style="display:none;">
 
 <script>
+// ===== 提示词设置 =====
+const settingsToggle = document.getElementById('settingsToggle');
+const settingsPanel = document.getElementById('settingsPanel');
+const promptC2H = document.getElementById('promptC2H');
+const promptH2C = document.getElementById('promptH2C');
+const settingsSave = document.getElementById('settingsSave');
+const settingsSaved = document.getElementById('settingsSaved');
+
+settingsToggle.addEventListener('click', () => {
+  settingsPanel.classList.toggle('active');
+  if (settingsPanel.classList.contains('active')) loadPrompts();
+});
+document.addEventListener('click', e => {
+  if (!settingsPanel.contains(e.target) && e.target !== settingsToggle) {
+    settingsPanel.classList.remove('active');
+  }
+});
+
+async function loadPrompts() {
+  try {
+    const r = await fetch('/api/prompts'); const d = await r.json();
+    promptC2H.value = d['cat-to-human'] || '';
+    promptH2C.value = d['human-to-cat'] || '';
+  } catch(e) { console.error('加载提示词失败:', e); }
+}
+
+settingsSave.addEventListener('click', async () => {
+  try {
+    const r = await fetch('/api/prompts', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ 'cat-to-human': promptC2H.value, 'human-to-cat': promptH2C.value })
+    });
+    const d = await r.json();
+    if (d.success) {
+      settingsSaved.classList.add('show');
+      setTimeout(() => settingsSaved.classList.remove('show'), 2000);
+    }
+  } catch(e) { alert('保存失败: ' + e.message); }
+});
+
 // ===== Tab 切换 =====
 document.querySelectorAll('.tab-btn').forEach(btn => {
   btn.addEventListener('click', () => {
