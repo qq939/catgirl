@@ -122,6 +122,8 @@ function gcd(a, b) { return b === 0 ? a : gcd(b, a % b); }
 
 // ===== 工具函数：通用 HTTP 请求 =====
 function httpRequest(url, options, body) {
+  const maxRedirects = options.maxRedirects || 5;
+  
   return new Promise((resolve, reject) => {
     const parsedUrl = new URL(url);
     const isHttps = parsedUrl.protocol === 'https:';
@@ -137,6 +139,15 @@ function httpRequest(url, options, body) {
     };
 
     const req = lib.request(reqOptions, (res) => {
+      // 处理重定向
+      if ([301, 302, 303, 307, 308].includes(res.statusCode) && maxRedirects > 0) {
+        const location = res.headers.location;
+        if (location) {
+          const nextUrl = location.startsWith('http') ? location : new URL(location, url).href;
+          return httpRequest(nextUrl, { ...options, maxRedirects: maxRedirects - 1 }, body)
+            .then(resolve).catch(reject);
+        }
+      }
       const chunks = [];
       res.on('data', (chunk) => { chunks.push(chunk); });
       res.on('end', () => {
@@ -150,11 +161,7 @@ function httpRequest(url, options, body) {
     req.on('timeout', () => { req.destroy(); reject(new Error('Request timeout')); });
 
     if (body) {
-      if (Buffer.isBuffer(body)) {
-        req.write(body);
-      } else {
-        req.write(body);
-      }
+      req.write(body);
     }
     req.end();
   });
