@@ -137,10 +137,12 @@ function httpRequest(url, options, body) {
     };
 
     const req = lib.request(reqOptions, (res) => {
-      let data = '';
-      res.on('data', (chunk) => { data += chunk; });
+      const chunks = [];
+      res.on('data', (chunk) => { chunks.push(chunk); });
       res.on('end', () => {
-        resolve({ statusCode: res.statusCode, headers: res.headers, body: data });
+        const rawData = Buffer.concat(chunks);
+        const body = options.binary ? rawData : rawData.toString('utf8');
+        resolve({ statusCode: res.statusCode, headers: res.headers, body });
       });
     });
 
@@ -348,6 +350,36 @@ async function cozeWorkflowRun(prompt, imageUrl) {
   throw new Error('工作流未返回有效图片 URL，请检查工作流配置');
 }
 
+// ===== 工具函数：下载图片并上传到 OBS =====
+async function downloadAndUploadToOBS(imageUrl, prefix = 'result') {
+  console.log(`[OBS] 下载生成图: ${imageUrl.substring(0, 80)}...`);
+  
+  // 下载图片（二进制模式）
+  const response = await httpRequest(imageUrl, { method: 'GET', timeout: 60000, binary: true });
+  if (response.statusCode !== 200) {
+    throw new Error(`下载生成图失败: HTTP ${response.statusCode}`);
+  }
+  
+  const buffer = response.body;
+  
+  // 根据内容判断扩展名
+  let ext = '.png';
+  if (buffer[0] === 0xFF && buffer[1] === 0xD8) ext = '.jpg';
+  else if (buffer[0] === 0x89 && buffer[1] === 0x50) ext = '.png';
+  else if (buffer[8] === 0x57 && buffer[9] === 0x45) ext = '.webp';
+  
+  // 时间戳文件名
+  const now = new Date();
+  const ts = `${now.getFullYear()}${String(now.getMonth()+1).padStart(2,'0')}${String(now.getDate()).padStart(2,'0')}_${String(now.getHours()).padStart(2,'0')}${String(now.getMinutes()).padStart(2,'0')}${String(now.getSeconds()).padStart(2,'0')}`;
+  const hash = crypto.randomBytes(4).toString('hex');
+  const filename = `hbs_${prefix}_${ts}_${hash}${ext}`;
+  
+  console.log(`[OBS] 上传生成图 ${filename} (${(buffer.length / 1024).toFixed(1)}KB)`);
+  const publicUrl = await uploadToOBS(buffer, filename);
+  console.log(`[OBS] 生成图已保存: ${publicUrl}`);
+  return publicUrl;
+}
+
 // ===== 健康检查 =====
 app.get('/api/health', (req, res) => {
   const configOk = checkConfig();
@@ -384,8 +416,11 @@ app.post('/api/generate', upload.single('image'), async (req, res) => {
     // 调用 Coze Workflow API 生成图片
     const resultUrl = await cozeWorkflowRun(prompt, imageUrl);
 
-    console.log(`[生成成功] URL: ${resultUrl}`);
-    res.json({ success: true, imageUrl: resultUrl });
+    // 将生成图下载并上传到 OBS（带时间戳文件名）
+    const obsUrl = await downloadAndUploadToOBS(resultUrl, 'single');
+
+    console.log(`[生成成功] OBS: ${obsUrl}`);
+    res.json({ success: true, imageUrl: obsUrl });
 
   } catch (err) {
     console.error('生成失败:', err);
@@ -421,8 +456,11 @@ app.post('/api/generate-dual', upload.fields([
     // 调用 Coze Workflow API 生成图片
     const resultUrl = await cozeWorkflowRun(prompt, refUrl);
 
-    console.log(`[双图生成成功] URL: ${resultUrl}`);
-    res.json({ success: true, imageUrl: resultUrl, direction });
+    // 将生成图下载并上传到 OBS（带时间戳文件名）
+    const obsUrl = await downloadAndUploadToOBS(resultUrl, 'dual');
+
+    console.log(`[双图生成成功] OBS: ${obsUrl}`);
+    res.json({ success: true, imageUrl: obsUrl, direction });
 
   } catch (err) {
     console.error('双图生成失败:', err);
