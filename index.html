@@ -219,36 +219,39 @@
   .direction-btn:hover:not(.active) { border-color: #555; color: #ddd; }
 
   /* ===== 提示词设置 ===== */
-  .settings-toggle {
-    position: fixed; bottom: 16px; right: 16px; width: 36px; height: 36px;
+  .prompt-dot {
+    position: fixed; bottom: 16px; width: 28px; height: 28px;
     border-radius: 50%; border: 1px solid #333; background: #15151f;
-    color: #555; font-size: 1em; cursor: pointer; z-index: 100;
+    color: #444; font-size: 0.75em; cursor: pointer; z-index: 100;
     display: flex; align-items: center; justify-content: center; transition: all .2s;
   }
-  .settings-toggle:hover { border-color: #666; color: #aaa; }
+  .prompt-dot:hover { border-color: #666; color: #aaa; }
+  .prompt-dot-left { left: 16px; }
+  .prompt-dot-right { right: 16px; }
 
-  .settings-panel {
-    position: fixed; bottom: 60px; right: 16px; width: 420px; max-height: 80vh;
+  .prompt-popup {
+    position: fixed; bottom: 52px; width: 400px; max-height: 70vh;
     background: #111118; border: 1px solid #333; border-radius: 14px;
-    padding: 20px; z-index: 100; display: none; overflow-y: auto;
+    padding: 18px; z-index: 100; display: none; overflow-y: auto;
     box-shadow: 0 8px 32px rgba(0,0,0,0.6);
   }
-  .settings-panel.active { display: block; }
-  .settings-panel h3 { font-size: 1em; color: #aaa; margin-bottom: 14px; font-weight: 600; }
-  .settings-panel label { display: block; font-size: 0.85em; color: #888; margin-bottom: 6px; margin-top: 12px; }
-  .settings-panel textarea {
-    width: 100%; height: 90px; background: #0a0a0f; border: 1px solid #333; border-radius: 8px;
-    color: #ddd; padding: 10px; font-size: 0.85em; resize: vertical; line-height: 1.5;
+  .prompt-popup.active { display: block; }
+  .prompt-popup-left { left: 16px; }
+  .prompt-popup-right { right: 16px; }
+  .prompt-popup h4 { font-size: 0.9em; color: #888; margin-bottom: 10px; font-weight: 600; }
+  .prompt-popup textarea {
+    width: 100%; height: 120px; background: #0a0a0f; border: 1px solid #333; border-radius: 8px;
+    color: #ddd; padding: 10px; font-size: 0.82em; resize: vertical; line-height: 1.5;
   }
-  .settings-panel textarea:focus { outline: none; border-color: #7c3aed55; }
-  .settings-save {
-    margin-top: 14px; padding: 8px 24px; border: none; border-radius: 8px;
+  .prompt-popup textarea:focus { outline: none; border-color: #7c3aed55; }
+  .prompt-popup-save {
+    margin-top: 10px; padding: 6px 20px; border: none; border-radius: 8px;
     background: linear-gradient(135deg, #7c3aed, #ea580c); color: #fff;
-    font-size: 0.9em; font-weight: 600; cursor: pointer; transition: all .2s;
+    font-size: 0.85em; font-weight: 600; cursor: pointer; transition: all .2s;
   }
-  .settings-save:hover { opacity: 0.85; }
-  .settings-saved { display: inline-block; margin-left: 10px; color: #4ade80; font-size: 0.82em; opacity: 0; transition: opacity .3s; }
-  .settings-saved.show { opacity: 1; }
+  .prompt-popup-save:hover { opacity: 0.85; }
+  .prompt-saved { display: inline-block; margin-left: 8px; color: #4ade80; font-size: 0.8em; opacity: 0; transition: opacity .3s; }
+  .prompt-saved.show { opacity: 1; }
 
   /* ===== Footer ===== */
   .footer { text-align:center; padding:24px 20px; color:#444; font-size:0.82em; }
@@ -365,15 +368,20 @@
 <div class="footer">人兽替换 — 左猫右人，AI 自动识别并生成对应形象</div>
 
 <!-- 提示词设置 -->
-<button class="settings-toggle" id="settingsToggle" title="提示词设置">⚙</button>
-<div class="settings-panel" id="settingsPanel">
-  <h3>提示词设置</h3>
-  <label for="promptC2H">🐾 动物 → 🧑 人物 提示词</label>
-  <textarea id="promptC2H" placeholder="动物变人的提示词..."></textarea>
-  <label for="promptH2C">🧑 人物 → 🐾 动物 提示词</label>
+<div class="prompt-dot prompt-dot-left" id="dotLeft" title="人变动物 提示词">🐾</div>
+<div class="prompt-popup prompt-popup-left" id="popupLeft">
+  <h4>🧑→🐾 人变动物 提示词</h4>
   <textarea id="promptH2C" placeholder="人变动物的提示词..."></textarea>
-  <button class="settings-save" id="settingsSave">保存</button>
-  <span class="settings-saved" id="settingsSaved">✓ 已保存</span>
+  <button class="prompt-popup-save" id="saveH2C">保存</button>
+  <span class="prompt-saved" id="savedH2C">✓ 已保存</span>
+</div>
+
+<div class="prompt-dot prompt-dot-right" id="dotRight" title="动物变人 提示词">🧑</div>
+<div class="prompt-popup prompt-popup-right" id="popupRight">
+  <h4>🐾→🧑 动物变人 提示词</h4>
+  <textarea id="promptC2H" placeholder="动物变人的提示词..."></textarea>
+  <button class="prompt-popup-save" id="saveC2H">保存</button>
+  <span class="prompt-saved" id="savedC2H">✓ 已保存</span>
 </div>
 
 <!-- 隐藏 input -->
@@ -384,44 +392,53 @@
 
 <script>
 // ===== 提示词设置 =====
-const settingsToggle = document.getElementById('settingsToggle');
-const settingsPanel = document.getElementById('settingsPanel');
-const promptC2H = document.getElementById('promptC2H');
-const promptH2C = document.getElementById('promptH2C');
-const settingsSave = document.getElementById('settingsSave');
-const settingsSaved = document.getElementById('settingsSaved');
-
-settingsToggle.addEventListener('click', () => {
-  settingsPanel.classList.toggle('active');
-  if (settingsPanel.classList.contains('active')) loadPrompts();
-});
-document.addEventListener('click', e => {
-  if (!settingsPanel.contains(e.target) && e.target !== settingsToggle) {
-    settingsPanel.classList.remove('active');
-  }
-});
-
 async function loadPrompts() {
   try {
     const r = await fetch('/api/prompts'); const d = await r.json();
-    promptC2H.value = d['cat-to-human'] || '';
-    promptH2C.value = d['human-to-cat'] || '';
+    document.getElementById('promptH2C').value = d['human-to-cat'] || '';
+    document.getElementById('promptC2H').value = d['cat-to-human'] || '';
   } catch(e) { console.error('加载提示词失败:', e); }
 }
 
-settingsSave.addEventListener('click', async () => {
-  try {
-    const r = await fetch('/api/prompts', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ 'cat-to-human': promptC2H.value, 'human-to-cat': promptH2C.value })
-    });
-    const d = await r.json();
-    if (d.success) {
-      settingsSaved.classList.add('show');
-      setTimeout(() => settingsSaved.classList.remove('show'), 2000);
-    }
-  } catch(e) { alert('保存失败: ' + e.message); }
+function setupPromptDot(dotId, popupId, textareaId, saveId, savedId, promptKey) {
+  const dot = document.getElementById(dotId);
+  const popup = document.getElementById(popupId);
+  const saveBtn = document.getElementById(saveId);
+  const savedTip = document.getElementById(savedId);
+
+  dot.addEventListener('click', e => {
+    e.stopPropagation();
+    const wasActive = popup.classList.contains('active');
+    document.querySelectorAll('.prompt-popup').forEach(p => p.classList.remove('active'));
+    if (!wasActive) { popup.classList.add('active'); loadPrompts(); }
+  });
+
+  popup.addEventListener('click', e => e.stopPropagation());
+
+  saveBtn.addEventListener('click', async () => {
+    const val = document.getElementById(textareaId).value;
+    try {
+      const r = await fetch('/api/prompts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ [promptKey]: val })
+      });
+      const d = await r.json();
+      if (d.success) {
+        savedTip.classList.add('show');
+        setTimeout(() => savedTip.classList.remove('show'), 2000);
+      }
+    } catch(e) { alert('保存失败: ' + e.message); }
+  });
+}
+
+setupPromptDot('dotLeft', 'popupLeft', 'promptH2C', 'saveH2C', 'savedH2C', 'human-to-cat');
+setupPromptDot('dotRight', 'popupRight', 'promptC2H', 'saveC2H', 'savedC2H', 'cat-to-human');
+
+document.addEventListener('click', e => {
+  if (!e.target.closest('.prompt-popup') && !e.target.closest('.prompt-dot')) {
+    document.querySelectorAll('.prompt-popup').forEach(p => p.classList.remove('active'));
+  }
 });
 
 // ===== Tab 切换 =====

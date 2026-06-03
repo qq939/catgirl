@@ -63,6 +63,7 @@ function httpRequest(url, options, body) {
       path: parsedUrl.pathname + parsedUrl.search,
       method: options.method || 'GET',
       headers: options.headers || {},
+      timeout: options.timeout || 120000, // 默认2分钟超时
     };
 
     const req = lib.request(reqOptions, (res) => {
