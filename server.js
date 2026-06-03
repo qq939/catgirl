@@ -435,14 +435,22 @@ app.post('/api/generate', upload.single('image'), async (req, res) => {
     // 将生成图下载并上传到 OBS（带时间戳文件名）
     const { obsUrl, buffer } = await downloadAndUploadToOBS(resultUrl, 'single');
 
-    // 保存生成图到本地 images/ 目录，替换 demo 图（前端直接用本地路径显示，无 CORS 和 Content-Type 问题）
+    // 保存生成图到本地 images/ 目录，替换 demo 图（成对替换：源图+生成图）
     let demoUrl = '';
     try {
-      const demoFilename = direction === 'cat-to-human' ? 'demo-human.jpg' : 'demo-cat.jpg';
-      const demoPath = path.join(__dirname, 'images', demoFilename);
-      fs.writeFileSync(demoPath, buffer);
-      demoUrl = '/images/' + demoFilename + '?t=' + Date.now(); // 加时间戳防缓存
-      console.log(`[Demo] 已替换: ${demoFilename}`);
+      const ts = Date.now();
+      if (direction === 'cat-to-human') {
+        // 源图→demo-cat，生成图→demo-human
+        fs.writeFileSync(path.join(__dirname, 'images', 'demo-cat.jpg'), imageFile.buffer);
+        fs.writeFileSync(path.join(__dirname, 'images', 'demo-human.jpg'), buffer);
+        demoUrl = '/images/demo-human.jpg?t=' + ts;
+      } else {
+        // 源图→demo-human，生成图→demo-cat
+        fs.writeFileSync(path.join(__dirname, 'images', 'demo-human.jpg'), imageFile.buffer);
+        fs.writeFileSync(path.join(__dirname, 'images', 'demo-cat.jpg'), buffer);
+        demoUrl = '/images/demo-cat.jpg?t=' + ts;
+      }
+      console.log(`[Demo] 成对替换: direction=${direction}`);
     } catch (e) { console.error('[Demo] 保存失败:', e.message); }
 
     // 记录历史
@@ -506,14 +514,20 @@ app.post('/api/generate-dual', upload.fields([
     // 将生成图下载并上传到 OBS（带时间戳文件名）
     const { obsUrl, buffer } = await downloadAndUploadToOBS(resultUrl, 'dual');
 
-    // 保存生成图到本地 images/ 目录，替换 demo 图
+    // 保存生成图到本地 images/ 目录，替换 demo 图（成对替换）
     let demoUrl = '';
     try {
-      const demoFilename = direction === 'generate-human' ? 'demo-human.jpg' : 'demo-cat.jpg';
-      const demoPath = path.join(__dirname, 'images', demoFilename);
-      fs.writeFileSync(demoPath, buffer);
-      demoUrl = '/images/' + demoFilename + '?t=' + Date.now();
-      console.log(`[Demo] 已替换: ${demoFilename}`);
+      const ts = Date.now();
+      if (direction === 'generate-human') {
+        fs.writeFileSync(path.join(__dirname, 'images', 'demo-cat.jpg'), catFile.buffer);
+        fs.writeFileSync(path.join(__dirname, 'images', 'demo-human.jpg'), buffer);
+        demoUrl = '/images/demo-human.jpg?t=' + ts;
+      } else {
+        fs.writeFileSync(path.join(__dirname, 'images', 'demo-human.jpg'), humanFile.buffer);
+        fs.writeFileSync(path.join(__dirname, 'images', 'demo-cat.jpg'), buffer);
+        demoUrl = '/images/demo-cat.jpg?t=' + ts;
+      }
+      console.log(`[Demo] 成对替换: direction=${direction}`);
     } catch (e) { console.error('[Demo] 保存失败:', e.message); }
 
     // 记录历史
