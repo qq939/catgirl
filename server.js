@@ -50,6 +50,76 @@ function checkConfig() {
   return missing.length === 0;
 }
 
+// ===== 工具函数：从 buffer 解析图片尺寸（支持 JPEG/PNG/WebP） =====
+function getImageSize(buffer) {
+  // PNG: 宽高在 IHDR chunk（偏移16-23）
+  if (buffer[0] === 0x89 && buffer[1] === 0x50) { // \x89PNG
+    return {
+      width: buffer.readUInt32BE(16),
+      height: buffer.readUInt32BE(20),
+    };
+  }
+  // JPEG: 查找 SOF0/SOF2 标记 (0xFFC0 / 0xFFC2)
+  if (buffer[0] === 0xFF && buffer[1] === 0xD8) {
+    let offset = 2;
+    while (offset < buffer.length - 1) {
+      if (buffer[offset] !== 0xFF) break;
+      const marker = buffer[offset + 1];
+      // SOF0, SOF1, SOF2 等标记
+      if (marker === 0xC0 || marker === 0xC1 || marker === 0xC2) {
+        return {
+          height: buffer.readUInt16BE(offset + 5),
+          width: buffer.readUInt16BE(offset + 7),
+        };
+      }
+      // 跳过非SOF标记段
+      const segLen = buffer.readUInt16BE(offset + 2);
+      offset += 2 + segLen;
+    }
+  }
+  // WebP: 简单解析
+  if (buffer[8] === 0x57 && buffer[9] === 0x45 && buffer[10] === 0x42 && buffer[11] === 0x50) {
+    // VP8 lossy
+    if (buffer[12] === 0x56 && buffer[13] === 0x50 && buffer[14] === 0x38 && buffer[15] === 0x20) {
+      const w = (buffer.readUInt16BE(26) & 0x3FFF);
+      const h = (buffer.readUInt16BE(28) & 0x3FFF);
+      return { width: w, height: h };
+    }
+    // VP8L lossless
+    if (buffer[12] === 0x56 && buffer[13] === 0x50 && buffer[14] === 0x38 && buffer[15] === 0x4C) {
+      const bits = buffer.readUInt32LE(21);
+      return { width: (bits & 0x3FFF) + 1, height: ((bits >> 14) & 0x3FFF) + 1 };
+    }
+  }
+  return null;
+}
+
+// ===== 工具函数：计算宽高比描述（用于提示词） =====
+function getAspectRatioDesc(buffer) {
+  const size = getImageSize(buffer);
+  if (!size) return '';
+  const { width, height } = size;
+  // 计算最简比
+  const g = gcd(width, height);
+  const rw = width / g;
+  const rh = height / g;
+  // 如果比值太大，用近似常用比
+  const ratio = width / height;
+  const commonRatios = [[1,1],[4,3],[3,4],[3,2],[2,3],[16,9],[9,16],[16,10],[10,16],[21,9],[9,21],[2,1],[1,2]];
+  for (const [a, b] of commonRatios) {
+    if (Math.abs(ratio - a/b) < 0.05) {
+      return `${a}:${b}`;
+    }
+  }
+  // 原始最简比
+  if (rw <= 30 && rh <= 30) return `${rw}:${rh}`;
+  // 大数近似
+  if (ratio > 1) return `约${Math.round(ratio*10)/10}:1`;
+  return `约1:${Math.round((1/ratio)*10)/10}`;
+}
+
+function gcd(a, b) { return b === 0 ? a : gcd(b, a % b); }
+
 // ===== 工具函数：通用 HTTP 请求 =====
 function httpRequest(url, options, body) {
   return new Promise((resolve, reject) => {
@@ -304,7 +374,7 @@ app.post('/api/generate', upload.single('image'), async (req, res) => {
   }
 
   try {
-    const prompt = buildSinglePrompt(direction);
+    const prompt = buildSinglePrompt(direction, imageFile.buffer);
 
     // 上传图片到 OBS 获取公开 URL（工作流需要可访问的图片 URL）
     const imageUrl = await fileToPublicUrl(imageFile, 'single');
@@ -341,10 +411,9 @@ app.post('/api/generate-dual', upload.fields([
   }
 
   try {
-    const prompt = buildDualPrompt(direction);
-
     // 双图模式：参考图为目标方向的源图
     const refFile = direction === 'generate-cat' ? humanFile : catFile;
+    const prompt = buildDualPrompt(direction, refFile.buffer);
     const refUrl = await fileToPublicUrl(refFile, 'dual');
 
     console.log(`[双图生成] direction=${direction}`);
@@ -402,20 +471,33 @@ app.post('/api/prompts', express.json(), (req, res) => {
 });
 
 // ===== Prompt 构建 =====
-function buildSinglePrompt(direction) {
+function buildSinglePrompt(direction, imageBuffer) {
+  let basePrompt;
   if (direction === 'cat-to-human') {
-    return customPrompts['cat-to-human'];
+    basePrompt = customPrompts['cat-to-human'];
   } else {
-    return customPrompts['human-to-cat'];
+    basePrompt = customPrompts['human-to-cat'];
   }
+  // 追加原始图片宽高比
+  const aspectDesc = imageBuffer ? getAspectRatioDesc(imageBuffer) : '';
+  if (aspectDesc) {
+    return `${basePrompt} 保持原始图片宽高比${aspectDesc}。`;
+  }
+  return basePrompt;
 }
 
-function buildDualPrompt(direction) {
+function buildDualPrompt(direction, imageBuffer) {
+  let basePrompt;
   if (direction === 'generate-human') {
-    return customPrompts['cat-to-human'];
+    basePrompt = customPrompts['cat-to-human'];
   } else {
-    return customPrompts['human-to-cat'];
+    basePrompt = customPrompts['human-to-cat'];
   }
+  const aspectDesc = imageBuffer ? getAspectRatioDesc(imageBuffer) : '';
+  if (aspectDesc) {
+    return `${basePrompt} 保持原始图片宽高比${aspectDesc}。`;
+  }
+  return basePrompt;
 }
 
 // ===== 启动 =====
