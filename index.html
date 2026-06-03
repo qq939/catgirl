@@ -611,12 +611,12 @@ async function sGenerateHuman() {
     const fd = new FormData(); fd.append('image', sState.catFile); fd.append('direction', 'cat-to-human');
     const r = await fetch('/api/generate', { method: 'POST', body: fd }); const d = await r.json();
     if (!d.success) throw new Error(d.error);
-    // 用 base64 显示（OBS Content-Type 是 application/octet-stream，img 标签加载会失败）
-    const displaySrc = d.imageBase64 || d.imageUrl;
+    // 生成图替换到面板显示
+    const displaySrc = d.demoUrl || d.imageUrl;
     showImg(sEls.humanImg, sEls.humanPh, displaySrc, sEls.humanReset, sEls.humanBadge, true);
     // 生成图变为该面板的源图，下次点按钮将反向生成
-    if (d.imageBase64) {
-      const blob = await fetch(d.imageBase64).then(r => r.blob());
+    if (d.demoUrl) {
+      const blob = await fetch(d.demoUrl).then(r => r.blob());
       sState.humanFile = new File([blob], 'generated-human.jpg', { type: blob.type || 'image/jpeg' });
       sState.humanUrl = displaySrc;
     }
@@ -630,10 +630,10 @@ async function sGenerateCat() {
     const fd = new FormData(); fd.append('image', sState.humanFile); fd.append('direction', 'human-to-cat');
     const r = await fetch('/api/generate', { method: 'POST', body: fd }); const d = await r.json();
     if (!d.success) throw new Error(d.error);
-    const displaySrc = d.imageBase64 || d.imageUrl;
+    const displaySrc = d.demoUrl || d.imageUrl;
     showImg(sEls.catImg, sEls.catPh, displaySrc, sEls.catReset, sEls.catBadge, true);
-    if (d.imageBase64) {
-      const blob = await fetch(d.imageBase64).then(r => r.blob());
+    if (d.demoUrl) {
+      const blob = await fetch(d.demoUrl).then(r => r.blob());
       sState.catFile = new File([blob], 'generated-cat.jpg', { type: blob.type || 'image/jpeg' });
       sState.catUrl = displaySrc;
     }

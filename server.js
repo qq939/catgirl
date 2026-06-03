@@ -364,9 +364,7 @@ async function downloadAndUploadToOBS(imageUrl, prefix = 'result') {
   const publicUrl = await uploadToOBS(buffer, filename);
   console.log(`[OBS] 生成图已保存: ${publicUrl}`);
   
-  // 返回 OBS URL 和 base64（前端用 base64 显示，避免 OBS Content-Type 问题）
-  const base64 = 'data:image/jpeg;base64,' + buffer.toString('base64');
-  return { obsUrl: publicUrl, base64 };
+  return { obsUrl: publicUrl, buffer };
 }
 
 // ===== 健康检查 =====
@@ -407,7 +405,17 @@ app.post('/api/generate', upload.single('image'), async (req, res) => {
     const { imageUrl: resultUrl, debugUrl } = await cozeWorkflowRun(prompt, imageUrl, targetSize);
 
     // 将生成图下载并上传到 OBS（带时间戳文件名）
-    const { obsUrl, base64 } = await downloadAndUploadToOBS(resultUrl, 'single');
+    const { obsUrl, buffer } = await downloadAndUploadToOBS(resultUrl, 'single');
+
+    // 保存生成图到本地 images/ 目录，替换 demo 图（前端直接用本地路径显示，无 CORS 和 Content-Type 问题）
+    let demoUrl = '';
+    try {
+      const demoFilename = direction === 'cat-to-human' ? 'demo-human.jpg' : 'demo-cat.jpg';
+      const demoPath = path.join(__dirname, 'images', demoFilename);
+      fs.writeFileSync(demoPath, buffer);
+      demoUrl = '/images/' + demoFilename + '?t=' + Date.now(); // 加时间戳防缓存
+      console.log(`[Demo] 已替换: ${demoFilename}`);
+    } catch (e) { console.error('[Demo] 保存失败:', e.message); }
 
     // 记录历史
     addHistory({
@@ -420,7 +428,7 @@ app.post('/api/generate', upload.single('image'), async (req, res) => {
     });
 
     console.log(`[生成成功] OBS: ${obsUrl}`);
-    res.json({ success: true, imageUrl: obsUrl, imageBase64: base64, debugUrl });
+    res.json({ success: true, imageUrl: obsUrl, demoUrl, debugUrl });
 
   } catch (err) {
     console.error('生成失败:', err);
@@ -468,7 +476,17 @@ app.post('/api/generate-dual', upload.fields([
     const { imageUrl: resultUrl, debugUrl } = await cozeWorkflowRun(prompt, refUrl, targetSize);
 
     // 将生成图下载并上传到 OBS（带时间戳文件名）
-    const { obsUrl, base64 } = await downloadAndUploadToOBS(resultUrl, 'dual');
+    const { obsUrl, buffer } = await downloadAndUploadToOBS(resultUrl, 'dual');
+
+    // 保存生成图到本地 images/ 目录，替换 demo 图
+    let demoUrl = '';
+    try {
+      const demoFilename = direction === 'generate-human' ? 'demo-human.jpg' : 'demo-cat.jpg';
+      const demoPath = path.join(__dirname, 'images', demoFilename);
+      fs.writeFileSync(demoPath, buffer);
+      demoUrl = '/images/' + demoFilename + '?t=' + Date.now();
+      console.log(`[Demo] 已替换: ${demoFilename}`);
+    } catch (e) { console.error('[Demo] 保存失败:', e.message); }
 
     // 记录历史
     addHistory({
@@ -480,7 +498,7 @@ app.post('/api/generate-dual', upload.fields([
     });
 
     console.log(`[双图生成成功] OBS: ${obsUrl}`);
-    res.json({ success: true, imageUrl: obsUrl, imageBase64: base64, direction, debugUrl });
+    res.json({ success: true, imageUrl: obsUrl, demoUrl, direction, debugUrl });
 
   } catch (err) {
     console.error('双图生成失败:', err);
