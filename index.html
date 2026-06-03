@@ -543,7 +543,7 @@ function fileToDataUrl(file) {
 }
 
 // ===== 单图模式 =====
-const sState = { catFile: null, catUrl: null, humanFile: null, humanUrl: null, catGen: false, humanGen: false };
+const sState = { catFile: null, catUrl: null, humanFile: null, humanUrl: null, lastDirection: null };
 const sEls = {
   catImg: document.getElementById('sCatImage'), catPh: document.getElementById('sCatPlaceholder'),
   catReset: document.getElementById('sCatReset'), catBadge: document.getElementById('sCatBadge'),
@@ -555,22 +555,22 @@ const sEls = {
 };
 
 setupDropZone(sEls.catZone, document.getElementById('sCatInput'), 'cat', async f => {
-  sState.catFile = f; sState.catUrl = await fileToDataUrl(f); sState.catGen = false;
+  sState.catFile = f; sState.catUrl = await fileToDataUrl(f);
   showImg(sEls.catImg, sEls.catPh, sState.catUrl, sEls.catReset, sEls.catBadge, false);
   updateSBtn();
 });
 setupDropZone(sEls.humanZone, document.getElementById('sHumanInput'), 'human', async f => {
-  sState.humanFile = f; sState.humanUrl = await fileToDataUrl(f); sState.humanGen = false;
+  sState.humanFile = f; sState.humanUrl = await fileToDataUrl(f);
   showImg(sEls.humanImg, sEls.humanPh, sState.humanUrl, sEls.humanReset, sEls.humanBadge, false);
   updateSBtn();
 });
 
 sEls.catReset.addEventListener('click', e => {
-  e.stopPropagation(); sState.catFile = null; sState.catUrl = null; sState.catGen = false;
+  e.stopPropagation(); sState.catFile = null; sState.catUrl = null;
   hideImg(sEls.catImg, sEls.catPh, sEls.catReset, sEls.catBadge); updateSBtn();
 });
 sEls.humanReset.addEventListener('click', e => {
-  e.stopPropagation(); sState.humanFile = null; sState.humanUrl = null; sState.humanGen = false;
+  e.stopPropagation(); sState.humanFile = null; sState.humanUrl = null;
   hideImg(sEls.humanImg, sEls.humanPh, sEls.humanReset, sEls.humanBadge); updateSBtn();
 });
 
@@ -581,8 +581,26 @@ function updateSBtn() {
 sEls.btn.addEventListener('click', async () => {
   sEls.btn.classList.add('loading'); sEls.btn.textContent = '⏳ 生成中...';
   try {
-    if (sState.catFile && !sState.catGen) await sGenerateHuman();
-    if (sState.humanFile && !sState.humanGen) await sGenerateCat();
+    // 决定生成方向：有上次方向就反向，否则根据哪侧有图决定
+    let dir;
+    if (sState.lastDirection === 'cat-to-human' && sState.humanFile) {
+      dir = 'human-to-cat';
+    } else if (sState.lastDirection === 'human-to-cat' && sState.catFile) {
+      dir = 'cat-to-human';
+    } else if (sState.catFile && !sState.humanFile) {
+      dir = 'cat-to-human';
+    } else if (sState.humanFile && !sState.catFile) {
+      dir = 'human-to-cat';
+    } else if (sState.catFile && sState.humanFile) {
+      // 两侧都有图且没历史方向，两个方向都生成
+      await sGenerateHuman();
+      await sGenerateCat();
+      return;
+    } else {
+      return;
+    }
+    if (dir === 'cat-to-human') await sGenerateHuman();
+    else await sGenerateCat();
   } catch (err) { alert('生成失败: ' + err.message); }
   finally { sEls.btn.classList.remove('loading'); sEls.btn.textContent = '✨ 开始替换生成'; }
 });
@@ -592,8 +610,13 @@ async function sGenerateHuman() {
   try {
     const fd = new FormData(); fd.append('image', sState.catFile); fd.append('direction', 'cat-to-human');
     const r = await fetch('/api/generate', { method: 'POST', body: fd }); const d = await r.json();
-    if (!d.success) throw new Error(d.error); sState.humanGen = true;
+    if (!d.success) throw new Error(d.error);
     showImg(sEls.humanImg, sEls.humanPh, d.imageUrl, sEls.humanReset, sEls.humanBadge, true);
+    // 生成图变为该面板的源图，下次点按钮将反向生成
+    const blob = await fetch(d.imageUrl).then(r => r.blob());
+    sState.humanFile = new File([blob], 'generated-human.jpg', { type: blob.type || 'image/jpeg' });
+    sState.humanUrl = d.imageUrl;
+    sState.lastDirection = 'cat-to-human';
   } catch (e) { alert('生成人物失败: ' + e.message); }
   finally { sEls.humanLoading.classList.remove('active'); }
 }
@@ -602,8 +625,13 @@ async function sGenerateCat() {
   try {
     const fd = new FormData(); fd.append('image', sState.humanFile); fd.append('direction', 'human-to-cat');
     const r = await fetch('/api/generate', { method: 'POST', body: fd }); const d = await r.json();
-    if (!d.success) throw new Error(d.error); sState.catGen = true;
+    if (!d.success) throw new Error(d.error);
     showImg(sEls.catImg, sEls.catPh, d.imageUrl, sEls.catReset, sEls.catBadge, true);
+    // 生成图变为该面板的源图，下次点按钮将反向生成
+    const blob = await fetch(d.imageUrl).then(r => r.blob());
+    sState.catFile = new File([blob], 'generated-cat.jpg', { type: blob.type || 'image/jpeg' });
+    sState.catUrl = d.imageUrl;
+    sState.lastDirection = 'human-to-cat';
   } catch (e) { alert('生成动物失败: ' + e.message); }
   finally { sEls.catLoading.classList.remove('active'); }
 }
