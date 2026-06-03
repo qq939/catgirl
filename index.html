@@ -483,13 +483,20 @@ async function loadHistoryList() {
       const dirMap = { 'cat-to-human': '🐾→🧑', 'human-to-cat': '🧑→🐱', 'generate-human': '🐾→🧑', 'generate-cat': '🧑→🐱' };
       const dirLabel = dirMap[item.direction] || item.direction;
       const time = new Date(item.timestamp).toLocaleString('zh-CN');
+      const isError = !!item.error;
+      const imgOrError = isError
+        ? `<div style="width:64px;height:64px;border-radius:6px;background:#1a0a0a;display:flex;align-items:center;justify-content:center;color:#f87171;font-size:0.85em;flex-shrink:0;">✗</div>`
+        : `<img src="${item.imageUrl}" style="width:64px;height:64px;object-fit:cover;border-radius:6px;flex-shrink:0;cursor:pointer;" onclick="window.open('${item.imageUrl}','_blank')">`;
       const debugLink = item.debugUrl ? `<a href="${item.debugUrl}" target="_blank" style="font-size:0.7em;color:#7c3aed;text-decoration:none;">调试</a>` : '';
-      return `<div style="display:flex;gap:10px;padding:8px;border:1px solid #222;border-radius:8px;margin-bottom:6px;align-items:center;background:#0d0d14;">
-        <img src="${item.imageUrl}" style="width:64px;height:64px;object-fit:cover;border-radius:6px;flex-shrink:0;cursor:pointer;" onclick="window.open('${item.imageUrl}','_blank')">
+      const errorText = isError ? `<div style="font-size:0.72em;color:#f87171;margin-top:3px;word-break:break-all;">${item.error}</div>` : '';
+      const links = !isError ? `<div style="margin-top:3px;"><a href="${item.imageUrl}" target="_blank" style="font-size:0.7em;color:#7c3aed;text-decoration:none;">大图</a>${debugLink ? ' · ' + debugLink : ''}</div>` : (debugLink ? `<div style="margin-top:3px;">${debugLink}</div>` : '');
+      return `<div style="display:flex;gap:10px;padding:8px;border:1px solid ${isError ? '#3a1515' : '#222'};border-radius:8px;margin-bottom:6px;align-items:flex-start;background:#0d0d14;">
+        ${imgOrError}
         <div style="flex:1;min-width:0;">
           <div style="font-size:0.82em;color:#bbb;">${dirLabel}</div>
           <div style="font-size:0.7em;color:#555;margin-top:3px;">${time}</div>
-          <div style="margin-top:3px;"><a href="${item.imageUrl}" target="_blank" style="font-size:0.7em;color:#7c3aed;text-decoration:none;">大图</a>${debugLink ? ' · ' + debugLink : ''}</div>
+          ${errorText}
+          ${links}
         </div>
       </div>`;
     }).join('');

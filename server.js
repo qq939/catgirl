@@ -421,6 +421,16 @@ app.post('/api/generate', upload.single('image'), async (req, res) => {
 
   } catch (err) {
     console.error('生成失败:', err);
+    // 失败也记录历史
+    addHistory({
+      id: crypto.randomUUID(),
+      direction,
+      imageUrl: '',
+      debugUrl: '',
+      error: err.message,
+      sourceSize: imageFile.size,
+      timestamp: new Date().toISOString(),
+    });
     res.status(500).json({ error: `生成失败: ${err.message}` });
   }
 });
@@ -471,6 +481,15 @@ app.post('/api/generate-dual', upload.fields([
 
   } catch (err) {
     console.error('双图生成失败:', err);
+    // 失败也记录历史
+    addHistory({
+      id: crypto.randomUUID(),
+      direction,
+      imageUrl: '',
+      debugUrl: '',
+      error: err.message,
+      timestamp: new Date().toISOString(),
+    });
     res.status(500).json({ error: `生成失败: ${err.message}` });
   }
 });
