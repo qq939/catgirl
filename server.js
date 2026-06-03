@@ -50,6 +50,26 @@ function checkConfig() {
   return missing.length === 0;
 }
 
+// ===== 工具函数：计算生成图尺寸（短边1080，长边按比例，范围1080-4320） =====
+function calculateTargetSize(buffer) {
+  const size = getImageSize(buffer);
+  if (!size) return null;
+  let { width, height } = size;
+  
+  // 短边设为1080，长边按比例
+  if (width <= height) {
+    // 竖版：宽是短边
+    const targetW = 1080;
+    const targetH = Math.round(1080 * height / width);
+    return { width: targetW, height: Math.min(targetH, 4320) };
+  } else {
+    // 横版：高是短边
+    const targetH = 1080;
+    const targetW = Math.round(1080 * width / height);
+    return { width: Math.min(targetW, 4320), height: targetH };
+  }
+}
+
 // ===== 工具函数：从 buffer 解析图片尺寸（支持 JPEG/PNG/WebP） =====
 function getImageSize(buffer) {
   // PNG
@@ -228,7 +248,7 @@ async function cozeWorkflowRun(prompt, imageUrl, imageSize) {
     parameters.image_url = imageUrl;
   }
 
-  // 传入原图分辨率，工作流可据此设置生成图尺寸
+  // 传入目标生成尺寸（短边1080，长边按比例）
   if (imageSize) {
     parameters.width = String(imageSize.width);
     parameters.height = String(imageSize.height);
@@ -373,15 +393,15 @@ app.post('/api/generate', upload.single('image'), async (req, res) => {
 
   try {
     const prompt = buildSinglePrompt(direction);
-    const imageSize = getImageSize(imageFile.buffer);
+    const targetSize = calculateTargetSize(imageFile.buffer);
 
     // 上传图片到 OBS 获取公开 URL（工作流需要可访问的图片 URL）
     const imageUrl = await fileToPublicUrl(imageFile, 'single');
 
-    console.log(`[生成] direction=${direction}, 图片大小=${(imageFile.size/1024).toFixed(1)}KB, 分辨率=${imageSize ? imageSize.width+'x'+imageSize.height : '未知'}`);
+    console.log(`[生成] direction=${direction}, 图片大小=${(imageFile.size/1024).toFixed(1)}KB, 生成尺寸=${targetSize ? targetSize.width+'x'+targetSize.height : '默认'}`);
 
     // 调用 Coze Workflow API 生成图片
-    const { imageUrl: resultUrl, debugUrl } = await cozeWorkflowRun(prompt, imageUrl, imageSize);
+    const { imageUrl: resultUrl, debugUrl } = await cozeWorkflowRun(prompt, imageUrl, targetSize);
 
     // 将生成图下载并上传到 OBS（带时间戳文件名）
     const obsUrl = await downloadAndUploadToOBS(resultUrl, 'single');
@@ -426,13 +446,13 @@ app.post('/api/generate-dual', upload.fields([
     // 双图模式：参考图为目标方向的源图
     const refFile = direction === 'generate-cat' ? humanFile : catFile;
     const prompt = buildDualPrompt(direction);
-    const imageSize = getImageSize(refFile.buffer);
+    const targetSize = calculateTargetSize(refFile.buffer);
     const refUrl = await fileToPublicUrl(refFile, 'dual');
 
-    console.log(`[双图生成] direction=${direction}, 分辨率=${imageSize ? imageSize.width+'x'+imageSize.height : '未知'}`);
+    console.log(`[双图生成] direction=${direction}, 生成尺寸=${targetSize ? targetSize.width+'x'+targetSize.height : '默认'}`);
 
     // 调用 Coze Workflow API 生成图片
-    const { imageUrl: resultUrl, debugUrl } = await cozeWorkflowRun(prompt, refUrl, imageSize);
+    const { imageUrl: resultUrl, debugUrl } = await cozeWorkflowRun(prompt, refUrl, targetSize);
 
     // 将生成图下载并上传到 OBS（带时间戳文件名）
     const obsUrl = await downloadAndUploadToOBS(resultUrl, 'dual');
