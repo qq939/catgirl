@@ -363,7 +363,10 @@ async function downloadAndUploadToOBS(imageUrl, prefix = 'result') {
   console.log(`[OBS] 上传生成图 ${filename} (${(buffer.length / 1024).toFixed(1)}KB)`);
   const publicUrl = await uploadToOBS(buffer, filename);
   console.log(`[OBS] 生成图已保存: ${publicUrl}`);
-  return publicUrl;
+  
+  // 返回 OBS URL 和 base64（前端用 base64 显示，避免 OBS Content-Type 问题）
+  const base64 = 'data:image/jpeg;base64,' + buffer.toString('base64');
+  return { obsUrl: publicUrl, base64 };
 }
 
 // ===== 健康检查 =====
@@ -404,7 +407,7 @@ app.post('/api/generate', upload.single('image'), async (req, res) => {
     const { imageUrl: resultUrl, debugUrl } = await cozeWorkflowRun(prompt, imageUrl, targetSize);
 
     // 将生成图下载并上传到 OBS（带时间戳文件名）
-    const obsUrl = await downloadAndUploadToOBS(resultUrl, 'single');
+    const { obsUrl, base64 } = await downloadAndUploadToOBS(resultUrl, 'single');
 
     // 记录历史
     addHistory({
@@ -417,7 +420,7 @@ app.post('/api/generate', upload.single('image'), async (req, res) => {
     });
 
     console.log(`[生成成功] OBS: ${obsUrl}`);
-    res.json({ success: true, imageUrl: obsUrl, debugUrl });
+    res.json({ success: true, imageUrl: obsUrl, imageBase64: base64, debugUrl });
 
   } catch (err) {
     console.error('生成失败:', err);
@@ -465,7 +468,7 @@ app.post('/api/generate-dual', upload.fields([
     const { imageUrl: resultUrl, debugUrl } = await cozeWorkflowRun(prompt, refUrl, targetSize);
 
     // 将生成图下载并上传到 OBS（带时间戳文件名）
-    const obsUrl = await downloadAndUploadToOBS(resultUrl, 'dual');
+    const { obsUrl, base64 } = await downloadAndUploadToOBS(resultUrl, 'dual');
 
     // 记录历史
     addHistory({
@@ -477,7 +480,7 @@ app.post('/api/generate-dual', upload.fields([
     });
 
     console.log(`[双图生成成功] OBS: ${obsUrl}`);
-    res.json({ success: true, imageUrl: obsUrl, direction, debugUrl });
+    res.json({ success: true, imageUrl: obsUrl, imageBase64: base64, direction, debugUrl });
 
   } catch (err) {
     console.error('双图生成失败:', err);
