@@ -50,6 +50,38 @@ function checkConfig() {
   return missing.length === 0;
 }
 
+// ===== 工具函数：从 buffer 解析图片尺寸（支持 JPEG/PNG/WebP） =====
+function getImageSize(buffer) {
+  // PNG
+  if (buffer[0] === 0x89 && buffer[1] === 0x50) {
+    return { width: buffer.readUInt32BE(16), height: buffer.readUInt32BE(20) };
+  }
+  // JPEG
+  if (buffer[0] === 0xFF && buffer[1] === 0xD8) {
+    let offset = 2;
+    while (offset < buffer.length - 1) {
+      if (buffer[offset] !== 0xFF) break;
+      const marker = buffer[offset + 1];
+      if (marker === 0xC0 || marker === 0xC1 || marker === 0xC2) {
+        return { height: buffer.readUInt16BE(offset + 5), width: buffer.readUInt16BE(offset + 7) };
+      }
+      const segLen = buffer.readUInt16BE(offset + 2);
+      offset += 2 + segLen;
+    }
+  }
+  // WebP
+  if (buffer[8] === 0x57 && buffer[9] === 0x45 && buffer[10] === 0x42 && buffer[11] === 0x50) {
+    if (buffer[12] === 0x56 && buffer[13] === 0x50 && buffer[14] === 0x38 && buffer[15] === 0x20) {
+      return { width: buffer.readUInt16BE(26) & 0x3FFF, height: buffer.readUInt16BE(28) & 0x3FFF };
+    }
+    if (buffer[12] === 0x56 && buffer[13] === 0x50 && buffer[14] === 0x38 && buffer[15] === 0x4C) {
+      const bits = buffer.readUInt32LE(21);
+      return { width: (bits & 0x3FFF) + 1, height: ((bits >> 14) & 0x3FFF) + 1 };
+    }
+  }
+  return null;
+}
+
 // ===== 工具函数：通用 HTTP 请求 =====
 function httpRequest(url, options, body) {
   const maxRedirects = options.maxRedirects || 5;
@@ -181,7 +213,7 @@ async function uploadToCoze(fileBuffer, filename) {
 }
 
 // ===== 工具函数：调用 Coze Workflow API 生成图片 =====
-async function cozeWorkflowRun(prompt, imageUrl) {
+async function cozeWorkflowRun(prompt, imageUrl, imageSize) {
   if (!COZE_API_KEY || !COZE_WORKFLOW_ID) {
     throw new Error('请配置 COZE_API_KEY 和 COZE_WORKFLOW_ID 环境变量');
   }
@@ -193,11 +225,13 @@ async function cozeWorkflowRun(prompt, imageUrl) {
 
   // 如果有参考图片，添加 image 参数
   if (imageUrl) {
-    // 工作流支持两种图片输入方式：
-    // 1. 直接传 URL 字符串（如果工作流的 image 参数是文本类型）
-    // 2. 传 {"file_id": "xxx"} 格式（如果工作流的 image 参数是文件类型）
-    // 这里同时传两种格式，工作流端根据配置选择使用哪个
     parameters.image_url = imageUrl;
+  }
+
+  // 传入原图分辨率，工作流可据此设置生成图尺寸
+  if (imageSize) {
+    parameters.width = String(imageSize.width);
+    parameters.height = String(imageSize.height);
   }
 
   const url = `${COZE_API_BASE}/v1/workflow/run`;
@@ -339,14 +373,15 @@ app.post('/api/generate', upload.single('image'), async (req, res) => {
 
   try {
     const prompt = buildSinglePrompt(direction);
+    const imageSize = getImageSize(imageFile.buffer);
 
     // 上传图片到 OBS 获取公开 URL（工作流需要可访问的图片 URL）
     const imageUrl = await fileToPublicUrl(imageFile, 'single');
 
-    console.log(`[生成] direction=${direction}, 图片大小=${(imageFile.size/1024).toFixed(1)}KB`);
+    console.log(`[生成] direction=${direction}, 图片大小=${(imageFile.size/1024).toFixed(1)}KB, 分辨率=${imageSize ? imageSize.width+'x'+imageSize.height : '未知'}`);
 
     // 调用 Coze Workflow API 生成图片
-    const { imageUrl: resultUrl, debugUrl } = await cozeWorkflowRun(prompt, imageUrl);
+    const { imageUrl: resultUrl, debugUrl } = await cozeWorkflowRun(prompt, imageUrl, imageSize);
 
     // 将生成图下载并上传到 OBS（带时间戳文件名）
     const obsUrl = await downloadAndUploadToOBS(resultUrl, 'single');
@@ -391,12 +426,13 @@ app.post('/api/generate-dual', upload.fields([
     // 双图模式：参考图为目标方向的源图
     const refFile = direction === 'generate-cat' ? humanFile : catFile;
     const prompt = buildDualPrompt(direction);
+    const imageSize = getImageSize(refFile.buffer);
     const refUrl = await fileToPublicUrl(refFile, 'dual');
 
-    console.log(`[双图生成] direction=${direction}`);
+    console.log(`[双图生成] direction=${direction}, 分辨率=${imageSize ? imageSize.width+'x'+imageSize.height : '未知'}`);
 
     // 调用 Coze Workflow API 生成图片
-    const { imageUrl: resultUrl, debugUrl } = await cozeWorkflowRun(prompt, refUrl);
+    const { imageUrl: resultUrl, debugUrl } = await cozeWorkflowRun(prompt, refUrl, imageSize);
 
     // 将生成图下载并上传到 OBS（带时间戳文件名）
     const obsUrl = await downloadAndUploadToOBS(resultUrl, 'dual');
