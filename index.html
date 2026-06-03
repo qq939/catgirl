@@ -368,20 +368,20 @@
 <div class="footer">人兽替换 — 左动物右人，AI 自动识别并生成对应形象</div>
 
 <!-- 提示词设置 -->
-<div class="prompt-dot prompt-dot-left" id="dotLeft" title="人变动物 提示词">🐾</div>
+<div class="prompt-dot prompt-dot-left" id="dotLeft" title="动物变人 提示词">🧑</div>
 <div class="prompt-popup prompt-popup-left" id="popupLeft">
-  <h4>🧑→🐾 人变动物 提示词</h4>
-  <textarea id="promptH2C" placeholder="人变动物的提示词..."></textarea>
-  <button class="prompt-popup-save" id="saveH2C">保存</button>
-  <span class="prompt-saved" id="savedH2C">✓ 已保存</span>
-</div>
-
-<div class="prompt-dot prompt-dot-right" id="dotRight" title="动物变人 提示词">🧑</div>
-<div class="prompt-popup prompt-popup-right" id="popupRight">
   <h4>🐾→🧑 动物变人 提示词</h4>
   <textarea id="promptC2H" placeholder="动物变人的提示词..."></textarea>
   <button class="prompt-popup-save" id="saveC2H">保存</button>
   <span class="prompt-saved" id="savedC2H">✓ 已保存</span>
+</div>
+
+<div class="prompt-dot prompt-dot-right" id="dotRight" title="人变动物 提示词">🐾</div>
+<div class="prompt-popup prompt-popup-right" id="popupRight">
+  <h4>🧑→🐾 人变动物 提示词</h4>
+  <textarea id="promptH2C" placeholder="人变动物的提示词..."></textarea>
+  <button class="prompt-popup-save" id="saveH2C">保存</button>
+  <span class="prompt-saved" id="savedH2C">✓ 已保存</span>
 </div>
 
 <!-- 隐藏 input -->
@@ -432,8 +432,8 @@ function setupPromptDot(dotId, popupId, textareaId, saveId, savedId, promptKey) 
   });
 }
 
-setupPromptDot('dotLeft', 'popupLeft', 'promptH2C', 'saveH2C', 'savedH2C', 'human-to-cat');
-setupPromptDot('dotRight', 'popupRight', 'promptC2H', 'saveC2H', 'savedC2H', 'cat-to-human');
+setupPromptDot('dotLeft', 'popupLeft', 'promptC2H', 'saveC2H', 'savedC2H', 'cat-to-human');
+setupPromptDot('dotRight', 'popupRight', 'promptH2C', 'saveH2C', 'savedH2C', 'human-to-cat');
 
 document.addEventListener('click', e => {
   if (!e.target.closest('.prompt-popup') && !e.target.closest('.prompt-dot')) {
