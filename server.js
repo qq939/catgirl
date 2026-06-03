@@ -1,5 +1,5 @@
 // ============================================
-// 人兽替换 - 后端服务（Coze Workflow API 模式）
+// 人猫替换 - 后端服务（Coze Workflow API 模式）
 // ============================================
 // 通过 Coze Workflow API 调用图片生成，无需 CLI
 // 环境变量（.env 文件自动加载，系统环境变量优先级更高）：
@@ -600,7 +600,7 @@ function buildDualPrompt(direction) {
 // ===== 启动 =====
 app.listen(PORT, () => {
   const configOk = checkConfig();
-  console.log(`\n🐾 人兽替换服务已启动（Workflow API 模式）`);
+  console.log(`\n🐾 人猫替换服务已启动（Workflow API 模式）`);
   console.log(`   地址: http://localhost:${PORT}`);
   console.log(`   模式: Coze Workflow API`);
   console.log(`   API Key: ${COZE_API_KEY ? '✅ 已配置' : '❌ 未配置'}`);

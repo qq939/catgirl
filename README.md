@@ -1,4 +1,4 @@
-# 🐾 人兽替换（Human-Beast-Swap）
+# 🐾 人猫替换（Human-Beast-Swap）
 
 AI 驱动的猫咪↔人物图片替换网站。上传猫咪或人物照片，AI 自动生成对应的替换形象。
 
