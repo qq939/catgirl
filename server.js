@@ -367,6 +367,34 @@ async function downloadAndUploadToOBS(imageUrl, prefix = 'result') {
   return { obsUrl: publicUrl, buffer };
 }
 
+// ===== 恢复初始 Demo 图 =====
+app.post('/api/reset-demo', (req, res) => {
+  try {
+    const catOrig = path.join(__dirname, 'images', 'demo-cat-original.jpg');
+    const humanOrig = path.join(__dirname, 'images', 'demo-human-original.jpg');
+    const catDest = path.join(__dirname, 'images', 'demo-cat.jpg');
+    const humanDest = path.join(__dirname, 'images', 'demo-human.jpg');
+
+    if (!fs.existsSync(catOrig) || !fs.existsSync(humanOrig)) {
+      return res.status(500).json({ error: '初始备份文件不存在' });
+    }
+
+    fs.copyFileSync(catOrig, catDest);
+    fs.copyFileSync(humanOrig, humanDest);
+
+    const ts = Date.now();
+    console.log('[Demo] 已恢复初始 demo 图');
+    res.json({
+      success: true,
+      catUrl: '/images/demo-cat.jpg?t=' + ts,
+      humanUrl: '/images/demo-human.jpg?t=' + ts,
+    });
+  } catch (e) {
+    console.error('[Demo] 恢复失败:', e.message);
+    res.status(500).json({ error: '恢复失败: ' + e.message });
+  }
+});
+
 // ===== 健康检查 =====
 app.get('/api/health', (req, res) => {
   const configOk = checkConfig();

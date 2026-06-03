@@ -35,6 +35,18 @@
     -webkit-background-clip: text;
     -webkit-text-fill-color: transparent;
     background-clip: text;
+    cursor: pointer;
+    transition: opacity 0.2s;
+    user-select: none;
+  }
+  .header h1:hover { opacity: 0.8; }
+  .header h1:active { opacity: 0.6; }
+  .header h1 .hint {
+    font-size: 0.35em;
+    opacity: 0.5;
+    -webkit-text-fill-color: #888;
+    display: block;
+    margin-top: 2px;
   }
   .header p { margin-top: 8px; color: #888; font-size: 0.95em; }
 
@@ -269,7 +281,7 @@
 <body>
 
 <div class="header">
-  <h1>🐾 人猫替换 🧑</h1>
+  <h1 id="titleBtn">🐾 人猫替换 🧑<span class="hint">点击恢复初始Demo</span></h1>
   <p>上传猫咪或人物照片，AI 自动生成对应的替换形象</p>
 </div>
 
@@ -641,6 +653,23 @@ async function sGenerateCat() {
   } catch (e) { alert('生成动物失败: ' + e.message); }
   finally { sEls.catLoading.classList.remove('active'); }
 }
+
+// ===== 点击标题恢复初始 Demo =====
+document.getElementById('titleBtn').addEventListener('click', async () => {
+  if (!confirm('恢复初始 Demo 图？当前面板上的图片将被替换回默认图。')) return;
+  try {
+    const r = await fetch('/api/reset-demo', { method: 'POST' });
+    const d = await r.json();
+    if (!d.success) throw new Error(d.error);
+    // 刷新单图模式面板
+    sState.catUrl = d.catUrl; sState.humanUrl = d.humanUrl;
+    sState.catFile = null; sState.humanFile = null;
+    sState.lastDirection = null;
+    showImg(sEls.catImg, sEls.catPh, d.catUrl, sEls.catReset, sEls.catBadge, false);
+    showImg(sEls.humanImg, sEls.humanPh, d.humanUrl, sEls.humanReset, sEls.humanBadge, false);
+    updateSBtn();
+  } catch (e) { alert('恢复失败: ' + e.message); }
+});
 
 // 单图模式：加载本地示例图
 (function loadSDemo() {
