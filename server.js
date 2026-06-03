@@ -293,6 +293,9 @@ async function cozeWorkflowRun(prompt, imageUrl) {
     throw new Error(`工作流执行失败: ${result.msg}`);
   }
 
+  // 提取 debug_url
+  const debugUrl = result.debug_url || '';
+
   // 解析工作流输出 - Coze 返回的 data 是字符串化的 JSON
   let outputData;
   try {
@@ -300,57 +303,49 @@ async function cozeWorkflowRun(prompt, imageUrl) {
   } catch (e) {
     // 如果 data 本身就是 URL
     if (typeof result.data === 'string' && result.data.startsWith('http')) {
-      return result.data;
+      return { imageUrl: result.data, debugUrl };
     }
     throw new Error(`工作流输出解析失败: ${e.message}, raw: ${result.data?.substring(0, 200)}`);
   }
 
   // 尝试多种输出格式
+  let foundUrl = null;
   // 格式1: { data: "https://..." }
   if (outputData.data) {
     if (typeof outputData.data === 'string' && outputData.data.startsWith('http')) {
-      return outputData.data;
-    }
-    // 格式2: { data: { output: "https://..." } }
-    if (typeof outputData.data === 'object' && outputData.data.output) {
+      foundUrl = outputData.data;
+    } else if (typeof outputData.data === 'object' && outputData.data.output) {
       const output = outputData.data.output;
       if (typeof output === 'string' && output.startsWith('http')) {
-        return output;
-      }
-      // 格式3: output 是数组
-      if (Array.isArray(output) && output.length > 0) {
+        foundUrl = output;
+      } else if (Array.isArray(output) && output.length > 0) {
         const firstItem = output[0];
-        if (typeof firstItem === 'string' && firstItem.startsWith('http')) {
-          return firstItem;
-        }
-        if (firstItem?.url) {
-          return firstItem.url;
-        }
-        if (firstItem?.image_url) {
-          return firstItem.image_url;
-        }
+        if (typeof firstItem === 'string' && firstItem.startsWith('http')) foundUrl = firstItem;
+        else if (firstItem?.url) foundUrl = firstItem.url;
+        else if (firstItem?.image_url) foundUrl = firstItem.image_url;
       }
     }
   }
 
   // 格式4: { output: "https://..." }
-  if (outputData.output) {
+  if (!foundUrl && outputData.output) {
     if (typeof outputData.output === 'string' && outputData.output.startsWith('http')) {
-      return outputData.output;
-    }
-    if (Array.isArray(outputData.output) && outputData.output.length > 0) {
+      foundUrl = outputData.output;
+    } else if (Array.isArray(outputData.output) && outputData.output.length > 0) {
       const firstItem = outputData.output[0];
-      if (typeof firstItem === 'string' && firstItem.startsWith('http')) {
-        return firstItem;
-      }
-      if (firstItem?.url) return firstItem.url;
-      if (firstItem?.image_url) return firstItem.image_url;
+      if (typeof firstItem === 'string' && firstItem.startsWith('http')) foundUrl = firstItem;
+      else if (firstItem?.url) foundUrl = firstItem.url;
+      else if (firstItem?.image_url) foundUrl = firstItem.image_url;
     }
   }
 
   // 格式5: 直接是 URL
-  if (typeof outputData === 'string' && outputData.startsWith('http')) {
-    return outputData;
+  if (!foundUrl && typeof outputData === 'string' && outputData.startsWith('http')) {
+    foundUrl = outputData;
+  }
+
+  if (foundUrl) {
+    return { imageUrl: foundUrl, debugUrl };
   }
 
   console.error('[Workflow] 无法解析输出:', JSON.stringify(outputData).substring(0, 500));
@@ -421,13 +416,23 @@ app.post('/api/generate', upload.single('image'), async (req, res) => {
     console.log(`[生成] direction=${direction}, 图片大小=${(imageFile.size/1024).toFixed(1)}KB`);
 
     // 调用 Coze Workflow API 生成图片
-    const resultUrl = await cozeWorkflowRun(prompt, imageUrl);
+    const { imageUrl: resultUrl, debugUrl } = await cozeWorkflowRun(prompt, imageUrl);
 
     // 将生成图下载并上传到 OBS（带时间戳文件名）
     const obsUrl = await downloadAndUploadToOBS(resultUrl, 'single');
 
+    // 记录历史
+    addHistory({
+      id: crypto.randomUUID(),
+      direction,
+      imageUrl: obsUrl,
+      debugUrl,
+      sourceSize: imageFile.size,
+      timestamp: new Date().toISOString(),
+    });
+
     console.log(`[生成成功] OBS: ${obsUrl}`);
-    res.json({ success: true, imageUrl: obsUrl });
+    res.json({ success: true, imageUrl: obsUrl, debugUrl });
 
   } catch (err) {
     console.error('生成失败:', err);
@@ -461,13 +466,22 @@ app.post('/api/generate-dual', upload.fields([
     console.log(`[双图生成] direction=${direction}`);
 
     // 调用 Coze Workflow API 生成图片
-    const resultUrl = await cozeWorkflowRun(prompt, refUrl);
+    const { imageUrl: resultUrl, debugUrl } = await cozeWorkflowRun(prompt, refUrl);
 
     // 将生成图下载并上传到 OBS（带时间戳文件名）
     const obsUrl = await downloadAndUploadToOBS(resultUrl, 'dual');
 
+    // 记录历史
+    addHistory({
+      id: crypto.randomUUID(),
+      direction,
+      imageUrl: obsUrl,
+      debugUrl,
+      timestamp: new Date().toISOString(),
+    });
+
     console.log(`[双图生成成功] OBS: ${obsUrl}`);
-    res.json({ success: true, imageUrl: obsUrl, direction });
+    res.json({ success: true, imageUrl: obsUrl, direction, debugUrl });
 
   } catch (err) {
     console.error('双图生成失败:', err);
@@ -478,6 +492,52 @@ app.post('/api/generate-dual', upload.fields([
 // ===== 自定义提示词（持久化到 prompts.json） =====
 const fs = require('fs');
 const PROMPTS_FILE = path.join(__dirname, 'prompts.json');
+const HISTORY_FILE = path.join(__dirname, 'history.json');
+
+// ===== 历史记录 =====
+function loadHistory() {
+  try {
+    if (fs.existsSync(HISTORY_FILE)) {
+      return JSON.parse(fs.readFileSync(HISTORY_FILE, 'utf8'));
+    }
+  } catch (e) {
+    console.error('[History] 读取失败:', e.message);
+  }
+  return [];
+}
+
+function saveHistory(history) {
+  fs.writeFileSync(HISTORY_FILE, JSON.stringify(history, null, 2), 'utf8');
+}
+
+function addHistory(record) {
+  const history = loadHistory();
+  history.unshift(record); // 最新的在最前面
+  if (history.length > 200) history.length = 200; // 最多保留200条
+  saveHistory(history);
+}
+
+// 历史记录 API
+app.get('/api/history', (req, res) => {
+  res.json(loadHistory());
+});
+
+app.delete('/api/history/:id', (req, res) => {
+  const history = loadHistory();
+  const idx = history.findIndex(h => h.id === req.params.id);
+  if (idx >= 0) {
+    history.splice(idx, 1);
+    saveHistory(history);
+    res.json({ success: true });
+  } else {
+    res.status(404).json({ error: '记录不存在' });
+  }
+});
+
+app.delete('/api/history', (req, res) => {
+  saveHistory([]);
+  res.json({ success: true });
+});
 
 const DEFAULT_PROMPTS = {
   'cat-to-human': `将参考图中的动物1:1替换为病娇萝莉少女，严格还原动物的神态、动作、构图、场景及所有细节，每一个姿态和表情都对应映射到人物身上。16岁病娇萝莉，苍白皮肤，黑色长直发齐刘海，眼神慵懒空洞又带一丝满足，身穿白色水手服上衣搭配深蓝百褶短裙，领口系红色蝴蝶结，过膝白色长袜，脚踩黑色玛丽珍鞋，颈戴蕾丝choker，身边散落洛丽塔发饰和丝带。写实摄影电影画质伦勃朗光。`,

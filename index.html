@@ -367,6 +367,17 @@
 
 <div class="footer">人兽替换 — 左动物右人，AI 自动识别并生成对应形象</div>
 
+<!-- 历史记录入口 -->
+<div class="prompt-dot" id="dotHistory" style="position:fixed;bottom:16px;left:50%;transform:translateX(-50%);" title="历史记录">📋</div>
+<div class="prompt-popup" id="popupHistory" style="left:50%;transform:translateX(-50%);bottom:52px;width:560px;max-width:90vw;">
+  <h4 style="display:flex;justify-content:space-between;align-items:center;">
+    <span>📋 生成历史</span>
+    <button id="clearHistory" style="background:none;border:1px solid #333;color:#888;padding:2px 10px;border-radius:6px;font-size:0.78em;cursor:pointer;">清空</button>
+  </h4>
+  <div id="historyList" style="margin-top:10px;overflow-y:auto;max-height:55vh;"></div>
+  <div id="historyEmpty" style="text-align:center;color:#555;padding:30px 0;">暂无生成记录</div>
+</div>
+
 <!-- 提示词设置 -->
 <div class="prompt-dot prompt-dot-left" id="dotLeft" title="动物变人 提示词">🧑</div>
 <div class="prompt-popup prompt-popup-left" id="popupLeft">
@@ -440,6 +451,50 @@ document.addEventListener('click', e => {
     document.querySelectorAll('.prompt-popup').forEach(p => p.classList.remove('active'));
   }
 });
+
+// ===== 历史记录 =====
+const dotHistory = document.getElementById('dotHistory');
+const popupHistory = document.getElementById('popupHistory');
+const historyList = document.getElementById('historyList');
+const historyEmpty = document.getElementById('historyEmpty');
+const clearHistoryBtn = document.getElementById('clearHistory');
+
+dotHistory.addEventListener('click', e => {
+  e.stopPropagation();
+  const wasActive = popupHistory.classList.contains('active');
+  document.querySelectorAll('.prompt-popup').forEach(p => p.classList.remove('active'));
+  if (!wasActive) { popupHistory.classList.add('active'); loadHistoryList(); }
+});
+popupHistory.addEventListener('click', e => e.stopPropagation());
+
+clearHistoryBtn.addEventListener('click', async () => {
+  if (!confirm('确定清空所有历史记录？')) return;
+  await fetch('/api/history', { method: 'DELETE' });
+  loadHistoryList();
+});
+
+async function loadHistoryList() {
+  try {
+    const r = await fetch('/api/history');
+    const list = await r.json();
+    if (!list.length) { historyList.innerHTML = ''; historyEmpty.style.display = 'block'; return; }
+    historyEmpty.style.display = 'none';
+    historyList.innerHTML = list.map(item => {
+      const dirMap = { 'cat-to-human': '🐾→🧑', 'human-to-cat': '🧑→🐱', 'generate-human': '🐾→🧑', 'generate-cat': '🧑→🐱' };
+      const dirLabel = dirMap[item.direction] || item.direction;
+      const time = new Date(item.timestamp).toLocaleString('zh-CN');
+      const debugLink = item.debugUrl ? `<a href="${item.debugUrl}" target="_blank" style="font-size:0.7em;color:#7c3aed;text-decoration:none;">调试</a>` : '';
+      return `<div style="display:flex;gap:10px;padding:8px;border:1px solid #222;border-radius:8px;margin-bottom:6px;align-items:center;background:#0d0d14;">
+        <img src="${item.imageUrl}" style="width:64px;height:64px;object-fit:cover;border-radius:6px;flex-shrink:0;cursor:pointer;" onclick="window.open('${item.imageUrl}','_blank')">
+        <div style="flex:1;min-width:0;">
+          <div style="font-size:0.82em;color:#bbb;">${dirLabel}</div>
+          <div style="font-size:0.7em;color:#555;margin-top:3px;">${time}</div>
+          <div style="margin-top:3px;"><a href="${item.imageUrl}" target="_blank" style="font-size:0.7em;color:#7c3aed;text-decoration:none;">大图</a>${debugLink ? ' · ' + debugLink : ''}</div>
+        </div>
+      </div>`;
+    }).join('');
+  } catch(e) { console.error('加载历史失败:', e); }
+}
 
 // ===== Tab 切换 =====
 document.querySelectorAll('.tab-btn').forEach(btn => {
