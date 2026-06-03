@@ -283,14 +283,14 @@
 <div class="mode-panel active" id="singleMode">
   <div class="container">
     <div class="panel panel-cat">
-      <div class="panel-label">🐱 猫咪</div>
+      <div class="panel-label">🐾 动物</div>
       <div class="drop-zone" id="sCatZone">
         <img id="sCatImage" src="" alt="" style="display:none;">
         <div class="placeholder-content" id="sCatPlaceholder">
           <div class="placeholder-icon">🐾</div>
-          <div class="placeholder-text">拖拽猫咪图片到此处<br>或点击上传<small>支持 JPG / PNG / WebP</small></div>
+          <div class="placeholder-text">拖拽动物图片到此处<br>或点击上传<small>支持 JPG / PNG / WebP</small></div>
         </div>
-        <div class="loading-overlay" id="sCatLoading"><div class="spinner"></div><div class="loading-text">AI 生成猫咪中...</div></div>
+        <div class="loading-overlay" id="sCatLoading"><div class="spinner"></div><div class="loading-text">AI 生成动物中...</div></div>
         <span class="result-badge" id="sCatBadge">AI 生成</span>
         <button class="reset-btn" id="sCatReset" title="重置">✕</button>
       </div>
@@ -317,12 +317,12 @@
 <div class="mode-panel" id="dualMode">
   <div class="container">
     <div class="panel panel-cat">
-      <div class="panel-label">🐱 猫咪参考</div>
+      <div class="panel-label">🐾 动物参考</div>
       <div class="drop-zone" id="dCatZone">
         <img id="dCatImage" src="" alt="" style="display:none;">
         <div class="placeholder-content" id="dCatPlaceholder">
           <div class="placeholder-icon">🐾</div>
-          <div class="placeholder-text">上传猫咪参考图<br>或点击上传<small>作为猫咪外貌参考</small></div>
+          <div class="placeholder-text">上传动物参考图<br>或点击上传<small>作为动物外貌参考</small></div>
         </div>
         <button class="reset-btn" id="dCatReset" title="重置">✕</button>
       </div>
@@ -343,7 +343,7 @@
 
   <!-- 方向选择 -->
   <div class="direction-selector">
-    <button class="direction-btn active" data-dir="generate-human">🐱→🧑 生成人物</button>
+    <button class="direction-btn active" data-dir="generate-human">🐾→🧑 生成人物</button>
     <button class="direction-btn" data-dir="generate-cat">🧑→🐱 生成猫咪</button>
   </div>
 
@@ -365,7 +365,7 @@
   <button class="action-btn" id="dGenerateBtn">✨ 开始生成</button>
 </div>
 
-<div class="footer">人兽替换 — 左猫右人，AI 自动识别并生成对应形象</div>
+<div class="footer">人兽替换 — 左动物右人，AI 自动识别并生成对应形象</div>
 
 <!-- 提示词设置 -->
 <div class="prompt-dot prompt-dot-left" id="dotLeft" title="人变动物 提示词">🐾</div>
@@ -542,7 +542,7 @@ async function sGenerateCat() {
     const r = await fetch('/api/generate', { method: 'POST', body: fd }); const d = await r.json();
     if (!d.success) throw new Error(d.error); sState.catGen = true;
     showImg(sEls.catImg, sEls.catPh, d.imageUrl, sEls.catReset, sEls.catBadge, true);
-  } catch (e) { alert('生成猫咪失败: ' + e.message); }
+  } catch (e) { alert('生成动物失败: ' + e.message); }
   finally { sEls.catLoading.classList.remove('active'); }
 }
 
